@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# added-lines ceiling
+added_total=0
+while IFS=$'\t' read -r added deleted path; do
+  [ "$added" = "-" ] && continue
+  added_total=$((added_total + added))
+done < <(git diff --cached --numstat)
+
+if [ "$added_total" -gt 500 ]; then
+  echo "pre-commit: $added_total added lines exceeds the 300-500 ceiling." >&2
+  exit 1
+fi
+
+# WORKLOG.md is append-only: no deletions, no mid-file insertion
+if git diff --cached --name-only | grep -qx 'WORKLOG.md'; then
+  numstat=$(git diff --cached --numstat -- WORKLOG.md)
+  deleted=$(echo "$numstat" | awk '{print $2}')
+  if [ "$deleted" != "0" ] && [ -n "$deleted" ]; then
+    echo "pre-commit: WORKLOG.md is append-only, deletions detected." >&2
+    exit 1
+  fi
+
+  old_lines=0
+  if git cat-file -e HEAD:WORKLOG.md 2>/dev/null; then
+    old_lines=$(git show HEAD:WORKLOG.md | wc -l)
+  fi
+
+  bad_hunk=0
+  while read -r line; do
+    if [[ "$line" =~ ^@@\ -([0-9]+)(,([0-9]+))?\ \+([0-9]+)(,([0-9]+))?\ @@ ]]; then
+      old_start="${BASH_REMATCH[1]}"
+      old_count="${BASH_REMATCH[3]:-1}"
+      if [ "$old_count" != "0" ]; then
+        bad_hunk=1
+      elif [ "$old_start" != "$old_lines" ]; then
+        bad_hunk=1
+      fi
+    fi
+  done < <(git diff --cached -U0 -- WORKLOG.md)
+
+  if [ "$bad_hunk" = "1" ]; then
+    echo "pre-commit: WORKLOG.md hunk touches existing content or inserts mid-file; only EOF appends allowed." >&2
+    exit 1
+  fi
+fi
+
+exit 0
