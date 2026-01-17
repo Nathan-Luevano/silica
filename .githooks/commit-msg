@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+msg_file="$1"
+
+if grep -qiE '^(co-authored-by|generated with|generated-by)' "$msg_file"; then
+  echo "commit-msg: attribution trailer found. every commit is authored by Nathan Luevano only." >&2
+  exit 1
+fi
+
+exit 0

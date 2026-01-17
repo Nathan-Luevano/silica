@@ -1,0 +1,12 @@
+spec:
+  release: ISA_A64_xml_A_profile-2026-06_mc
+  architecture: Armv9.6-A
+  commit_id: 2026-06_rel
+  sha256: b1c6ebd90c6782eb4f2b13924e211410df646df080921f6700f05ad383824893
+  downloaded: 2026-08-20
+  path: ~/Documents/silica-vendor/ISA_A64_xml_A_profile-2026-06_mc
+  xml_dir: ~/Documents/silica-vendor/ISA_A64_xml_A_profile-2026-06_mc/ISA_A64_xml_A_profile-2026-06_mc
+tools:
+  ghidra:
+    version: 12.1.3_PUBLIC
+    path: ~/Documents/silica-vendor/ghidra_12.1.3_PUBLIC
