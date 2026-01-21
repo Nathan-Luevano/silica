@@ -2,6 +2,7 @@ artifacts/
 .venv/
 target/
 __pycache__/
+*.egg-info/
 *.pyc
 .mypy_cache/
 .ruff_cache/
