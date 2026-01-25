@@ -1,0 +1,27 @@
+name: silica
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - rust
+  - pkg-config
+  - capstone
+  - llvmdev
+  - llvm-tools
+  - binutils
+  - unicorn
+  - openjdk=21
+  - lxml
+  - numpy
+  - pyyaml
+  - typer
+  - zstandard
+  - pytest
+  - hypothesis
+  - ruff
+  - mypy
+  - make
+  - pip
+  - pip:
+      - -e .[dev]
+      - types-PyYAML
