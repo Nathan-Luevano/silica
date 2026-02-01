@@ -58,27 +58,28 @@ def check_spec_paths(manifest: dict[str, Any]) -> list[Check]:
     return checks
 
 
-def check_capstone() -> Check:
-    try:
-        import capstone  # noqa: F401
+def _conda_prefix() -> Path:
+    return Path(os.environ["CONDA_PREFIX"])
 
-        return Check("capstone importable", True, "python binding present")
-    except ImportError as e:
-        return Check("capstone importable", False, str(e))
+
+def check_pkgconfig_lib(name: str) -> Check:
+    # capstone and unicorn are linked in-process from rust (design.md §3.1),
+    # never imported from python. checking headers, not a python binding.
+    header = _conda_prefix() / "include" / name
+    result = subprocess.run(
+        ["pkg-config", "--exists", name],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, "PKG_CONFIG_PATH": str(_conda_prefix() / "lib" / "pkgconfig")},
+    )
+    ok = header.exists() and result.returncode == 0
+    return Check(f"{name} headers + pkg-config present", ok, str(header))
 
 
 def check_llvm() -> Check:
     result = subprocess.run(["llvm-config", "--libdir"], capture_output=True, text=True, check=False)
     return Check("llvm-config present", result.returncode == 0, result.stdout.strip() or result.stderr.strip())
-
-
-def check_unicorn() -> Check:
-    try:
-        import unicorn  # noqa: F401
-
-        return Check("unicorn importable", True, "python binding present")
-    except ImportError as e:
-        return Check("unicorn importable", False, str(e))
 
 
 def check_binutils_aarch64() -> Check:
@@ -97,9 +98,9 @@ def run_all() -> list[Check]:
     manifest = load_manifest()
     checks: list[Check] = []
     checks.extend(check_spec_paths(manifest))
-    checks.append(check_capstone())
+    checks.append(check_pkgconfig_lib("capstone"))
     checks.append(check_llvm())
-    checks.append(check_unicorn())
+    checks.append(check_pkgconfig_lib("unicorn"))
     checks.append(check_binutils_aarch64())
     checks.append(check_ghidra(manifest))
     return checks
