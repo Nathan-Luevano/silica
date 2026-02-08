@@ -1,0 +1,10 @@
+[package]
+name = "silica-bitmap"
+version = "0.1.0"
+edition.workspace = true
+
+[lib]
+name = "silica_bitmap"
+path = "src/lib.rs"
+
+[dependencies]
