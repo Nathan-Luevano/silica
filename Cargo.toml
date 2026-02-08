@@ -1,0 +1,10 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/silica-sweep",
+    "crates/silica-oracles",
+    "crates/silica-bitmap",
+]
+
+[workspace.package]
+edition = "2021"
