@@ -1,0 +1,10 @@
+[package]
+name = "silica-oracles"
+version = "0.1.0"
+edition.workspace = true
+
+[lib]
+name = "silica_oracles"
+path = "src/lib.rs"
+
+[dependencies]

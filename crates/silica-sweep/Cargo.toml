@@ -1,0 +1,12 @@
+[package]
+name = "silica-sweep"
+version = "0.1.0"
+edition.workspace = true
+
+[[bin]]
+name = "silica-sweep"
+path = "src/main.rs"
+
+[dependencies]
+silica-oracles = { path = "../silica-oracles" }
+silica-bitmap = { path = "../silica-bitmap" }
