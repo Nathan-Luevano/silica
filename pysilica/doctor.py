@@ -91,7 +91,26 @@ def check_binutils_aarch64() -> Check:
 def check_ghidra(manifest: dict[str, Any]) -> Check:
     ghidra_path = _expand(manifest["tools"]["ghidra"]["path"])
     headless = ghidra_path / "support" / "analyzeHeadless"
-    return Check("ghidra analyzeHeadless present", headless.exists(), str(headless))
+    if not headless.exists():
+        return Check("ghidra analyzeHeadless runs against micromamba JDK", False, f"missing: {headless}")
+
+    env = {
+        **os.environ,
+        "JAVA_HOME": str(_conda_prefix() / "lib" / "jvm"),
+        "GHIDRA_INSTALL_DIR": str(ghidra_path),
+    }
+    result = subprocess.run(
+        [str(headless), "-help"], capture_output=True, text=True, check=False, env=env, timeout=60
+    )
+    # analyzeHeadless -help exits 1 by its own convention (a usage message,
+    # not an error); the JVM having started and printed real help text is
+    # what proves the micromamba JDK works, not the exit code.
+    ok = "Headless Analyzer Usage" in result.stdout
+    return Check(
+        "ghidra analyzeHeadless runs against micromamba JDK",
+        ok,
+        "ran -help cleanly" if ok else f"exit {result.returncode}: {result.stderr[:200]}",
+    )
 
 
 def run_all() -> list[Check]:
