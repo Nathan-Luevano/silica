@@ -9,11 +9,13 @@ from pathlib import Path
 def last_entry_verifier_state() -> str | None:
     text = Path("WORKLOG.md").read_text()
     entries = re.split(r"\n(?=## )", text.strip())
-    if not entries:
-        return None
-    last = entries[-1]
-    match = re.search(r"^\*\*Verifier state:\*\*\s*(.+)$", last, re.MULTILINE)
-    return match.group(1).strip() if match else None
+    # CHECKPOINT entries (§10.4) use a different template with no "Verifier
+    # state:" field; walk backwards to the last regular commit entry.
+    for entry in reversed(entries):
+        match = re.search(r"^\*\*Verifier state:\*\*\s*(.+)$", entry, re.MULTILINE)
+        if match:
+            return match.group(1).strip()
+    return None
 
 
 def actual_verify_summary() -> str:
