@@ -5,9 +5,78 @@ verifier checks both producer and consumer agree with what's written here.
 
 ## decode-table.bin
 
-Produced by the Python spec compiler (`pysilica/spec/`), consumed nowhere
-outside verification in P1; the Rust sweep gets its own compiled form later.
-Format not yet fixed — P1 fixes it before `mra.py` writes the first byte.
+Produced by the Python spec compiler (`pysilica/spec/mra.py` +
+`pysilica/spec/tables.py`), consumed nowhere outside verification and
+`pysilica` tests in P1; the Rust sweep (P2+) gets its own compiled form
+later and is free to ignore this file entirely.
+
+The table is a binary-decision tree over the 32 encoding bits, one leaf per
+distinguishable region of the 2^32 word space, built from every
+`type="instruction"` `<regdiagram>` in the spec XML. Nodes are stored as a
+flat array; a node's children are referenced by index into that same array
+(indices always point earlier in the array — the tree is built bottom-up and
+written in construction order, so no forward references exist). All
+integers little-endian.
+
+```
+magic            4 bytes   b"SIL1"
+spec_release_len u32
+spec_release     UTF-8, spec_release_len bytes   (e.g. "ISA_A64_xml_A_profile-2026-06_mc")
+form_count       u32
+forms[form_count]:
+  psname_len      u32
+  psname          UTF-8 bytes                     (the decode-tree key, DESIGN-FINAL.md §5.4)
+  encoding_names_len  u32
+  encoding_names  UTF-8 bytes, "|"-joined <encoding name> values sharing this psname
+  mnemonic_len    u32
+  mnemonic        UTF-8 bytes
+  gating_len      u32
+  gating          UTF-8 bytes, ","-joined FEAT_* names from <arch_variants> (empty = ungated)
+node_count       u32
+nodes[node_count]:
+  kind            u8        0 = internal, 1 = leaf ALLOCATED, 2 = leaf UNALLOCATED
+  bit             u8        bit position 31..0 this node splits on; 0 for leaf kinds
+  a               u32       kind 0: index of the child taken when `bit` is 0
+                             kind 1: index into forms[] for the matched form
+                             kind 2: unused, written as 0
+  b               u32       kind 0: index of the child taken when `bit` is 1
+                             kind 1: count of forms whose fixed bits are
+                                     indistinguishable from the matched one at
+                                     this leaf (>1 means the regdiagram alone
+                                     cannot name the instruction uniquely —
+                                     see "known limitations" below; the word
+                                     is still definitely ALLOCATED)
+                             kind 2: unused, written as 0
+root_index       u32       index into nodes[] of the tree root
+```
+
+To classify a 32-bit word: start at `root_index`, and at each internal node
+test `(word >> bit) & 1`, following child `a` for 0 or child `b` for 1, until
+a leaf is reached. Leaves only occur once every bit position 31..0 has been
+consulted. Because of node-array sharing (memoized on the set of
+still-possibly-matching forms plus current bit), the array is far smaller
+than 2^32 entries — building it against the real 2026-06 spec produces on the
+order of 10^4-10^5 nodes, not 10^9.
+
+**Known limitations** (see `g1_metrics.json`'s `decode_time_undefined_forms`
+and `ambiguous_leaf_groups`):
+- The tree is built purely from fixed regdiagram bits. Some instructions
+  (e.g. the AArch64 hint space: `PACIA1716`/`AUTIA1716`/`NOP`/... under
+  `A64.control.hints.HINT_HM_hints`) share one regdiagram and are actually
+  disambiguated by a decode-time dispatch on field *values*, described only
+  in prose/pseudocode outside the regdiagram. Such words are still correctly
+  classified ALLOCATED; only the attached form name may be one of several
+  valid names for that word (`b` count > 1 on the leaf records this).
+- Decode-time `UNDEFINED`/`UNPREDICTABLE`/`UnallocatedEncoding` conditions
+  keyed on field values, if present in a `<pstext section="Decode">` or
+  `section="Postdecode"` block, are not evaluated — the compiler only greps
+  those two sections for those literal ASL calls and counts files where they
+  appear (`decode_time_undefined_forms`), it does not act on them. Measured
+  against the real 2026-06 base-A64 corpus this count is 0 (see
+  `g1_metrics.json`), meaning no over-acceptance from this source was
+  detected by that heuristic — but the heuristic is a keyword grep, not an
+  ASL interpreter, and would miss an equivalent condition phrased without
+  those exact calls.
 
 ## g1_metrics.json
 
@@ -23,6 +92,22 @@ Produced by the P1 spec-compiler run. Flat JSON object, required keys:
 - `ret_test_word` — string, hex of the RET encoding used as the parser's first
   unit test, e.g. `"0xd65f03c0"`
 - `ret_test_passed` — bool
+
+Extra keys, not required by `verify_g1_spec_oracle` but written for
+transparency per DESIGN-FINAL.md §5.3:
+
+- `decode_time_undefined_forms` — int, count of `type="instruction"` files
+  whose `<pstext section="Decode">` or `section="Postdecode"` text contains
+  `UNDEFINED`, `UNPREDICTABLE`, `UnallocatedEncoding`, `EndOfInstruction`, or
+  `ReservedEncoding` — a keyword-grep proxy for decode-time field-value
+  conditions the regdiagram-only tree does not evaluate. Not a full ASL
+  interpreter; see docs/formats.md's decode-table.bin section for caveats.
+- `ambiguous_leaf_groups` — int, count of distinct regdiagram fixed-bit
+  signatures shared by more than one named form (leaf `b` count > 1 in
+  decode-table.bin). Affects only which name is attached to a word, never
+  the allocated/unallocated boundary.
+- `instruction_files` / `alias_files` — int counts of `type="instruction"`
+  and `type="alias"` instructionsection files found under `xml_dir`.
 
 ## bitmaps/<oracle>.bin
 
