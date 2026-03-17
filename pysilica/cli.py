@@ -5,9 +5,17 @@ import sys
 import typer
 
 from pysilica import doctor as doctor_mod
+from pysilica.spec.compile import run_and_write
 from pysilica.verify.registry import run_all
 
 app = typer.Typer()
+
+
+@app.command(name="compile-spec")
+def compile_spec_cmd() -> None:
+    result = run_and_write()
+    for k, v in result.metrics.items():
+        print(f"{k}: {v}")
 
 
 @app.command()
