@@ -1,5 +1,6 @@
 #![allow(missing_docs)]
 
+pub mod llvm;
 pub mod llvm_spike;
 pub mod spec;
 
