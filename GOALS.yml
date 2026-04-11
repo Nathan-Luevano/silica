@@ -15,7 +15,7 @@ goals:
     statement: Produce a canonical normal form making cross-tool comparison meaningful
     verifier: verify_g3_normalization
     verifier_file: pysilica/verify/g3_normalization.py
-    verifier_sha256: d4ea6a1713e7a5380a05fd7b127b6e1aa2c9c479cf893dc441475eeabcfe02cb
+    verifier_sha256: 79c8f01dfc8b41952a5ca43702bcc4ae1717315c69ec9fe2d93824869e7ab5d3
     status: unverified
   - id: G4
     statement: Emit a reproducible disagreement corpus, every entry classified into a taxonomy
