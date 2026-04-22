@@ -13,6 +13,7 @@ RULE_ZERO_REGISTERS = "zero_registers"
 RULE_SHIFT_DEFAULTS = "shift_defaults"
 RULE_CONDITIONS = "condition_codes"
 RULE_MEMORY_OPERANDS = "memory_operands"
+RULE_SPEC_ALIAS = "spec_alias"
 
 ALL_RULES = [
     RULE_STRIP_COMMENTS,
@@ -23,7 +24,17 @@ ALL_RULES = [
     RULE_SHIFT_DEFAULTS,
     RULE_CONDITIONS,
     RULE_MEMORY_OPERANDS,
+    RULE_SPEC_ALIAS,
 ]
+
+TAXONOMY_EQUIVALENT = "EQUIVALENT"
+TAXONOMY_VALIDITY = "VALIDITY"
+TAXONOMY_MNEMONIC = "MNEMONIC"
+TAXONOMY_OPERAND = "OPERAND"
+TAXONOMY_ALIAS = "ALIAS"
+TAXONOMY_FORMATTING = "FORMATTING"
+TAXONOMY_NORMALIZATION_UNCERTAIN = "NORMALIZATION_UNCERTAIN"
+TAXONOMY_CRASH = "CRASH"
 
 
 def strip_comments(text: str) -> tuple[str, bool]:
@@ -67,7 +78,6 @@ def normalize_immediates(text: str) -> tuple[str, bool]:
 
 def normalize_zero_registers(text: str) -> tuple[str, bool]:
     # wzr/xzr canonicalization when disassemblers output w31/x31 in non-sp context
-    # only replace standalone w31/x31 operand tokens, not inside sp
     res = re.sub(r"\b(w|x)31\b", r"\g<1>zr", text)
     return res, res != text
 
@@ -89,6 +99,46 @@ def normalize_memory_operands(text: str) -> tuple[str, bool]:
     # standardizes [reg, #0] to [reg]
     res = re.sub(r"\[([a-zA-Z0-9_]+),\s*#0\]", r"[\1]", text)
     return res, res != text
+
+
+def normalize_spec_alias(text: str) -> tuple[str, bool]:
+    # spec-driven alias canonicalization from ARM ISA <alias_list>
+    res = text
+    # orr Rd, wzr/xzr, Rm / orr Rd, Rm, wzr/xzr -> mov Rd, Rm
+    res = re.sub(r"\borr\s+([wx]\d+|[wx]zr),\s*[wx]zr,\s*([wx]\d+|[wx]zr)\b", r"mov \1, \2", res)
+    res = re.sub(r"\borr\s+([wx]\d+|[wx]zr),\s*([wx]\d+|[wx]zr),\s*[wx]zr\b", r"mov \1, \2", res)
+    # subs wzr/xzr, Rn, Rm / #imm -> cmp Rn, Rm / #imm
+    res = re.sub(r"\bsubs\s+[wx]zr,\s*([wx]\d+),\s*([^,\s]+)\b", r"cmp \1, \2", res)
+    # adds wzr/xzr, Rn, Rm / #imm -> cmn Rn, Rm / #imm
+    res = re.sub(r"\badds\s+[wx]zr,\s*([wx]\d+),\s*([^,\s]+)\b", r"cmn \1, \2", res)
+    # ands wzr/xzr, Rn, Rm / #imm -> tst Rn, Rm / #imm
+    res = re.sub(r"\bands\s+[wx]zr,\s*([wx]\d+),\s*([^,\s]+)\b", r"tst \1, \2", res)
+    # orn Rd, wzr/xzr, Rm -> mvn Rd, Rm
+    res = re.sub(r"\born\s+([wx]\d+|[wx]zr),\s*[wx]zr,\s*([wx]\d+|[wx]zr)\b", r"mvn \1, \2", res)
+    # sub Rd, wzr/xzr, Rm -> neg Rd, Rm (where Rd is not wzr/xzr)
+    res = re.sub(r"\bsub\s+([wx]\d+),\s*[wx]zr,\s*([wx]\d+|[wx]zr)\b", r"neg \1, \2", res)
+    # subs Rd, wzr/xzr, Rm -> negs Rd, Rm (where Rd is not wzr/xzr)
+    res = re.sub(r"\bsubs\s+([wx]\d+),\s*[wx]zr,\s*([wx]\d+|[wx]zr)\b", r"negs \1, \2", res)
+    return res, res != text
+
+
+def classify_disagreement(
+    raw_a: str | None,
+    raw_b: str | None,
+    norm_a: str | None,
+    norm_b: str | None,
+) -> str:
+    if raw_a is None or raw_b is None:
+        return TAXONOMY_VALIDITY
+    if norm_a == norm_b:
+        return TAXONOMY_EQUIVALENT
+    tokens_a = norm_a.split() if norm_a else []
+    tokens_b = norm_b.split() if norm_b else []
+    mnem_a = tokens_a[0].lower() if tokens_a else ""
+    mnem_b = tokens_b[0].lower() if tokens_b else ""
+    if mnem_a == mnem_b:
+        return TAXONOMY_OPERAND
+    return TAXONOMY_NORMALIZATION_UNCERTAIN
 
 
 @dataclass
@@ -141,6 +191,11 @@ class Normalizer:
         s, modified = normalize_memory_operands(curr)
         if modified:
             applied.append(RULE_MEMORY_OPERANDS)
+            curr = s
+
+        s, modified = normalize_spec_alias(curr)
+        if modified:
+            applied.append(RULE_SPEC_ALIAS)
             curr = s
 
         return NormalizationResult(

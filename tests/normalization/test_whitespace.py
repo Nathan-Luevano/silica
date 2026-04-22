@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from pysilica.analyze.normalize import normalize_case, normalize_whitespace
+from pysilica.analyze.normalize import (
+    RULE_LOWERCASE,
+    RULE_WHITESPACE,
+    normalize_case,
+    normalize_whitespace,
+)
 
 
 def test_normalize_whitespace_basic() -> None:
@@ -17,8 +22,10 @@ def test_normalize_whitespace_brackets() -> None:
     assert res == "ldr x0, [x1, #0]"
 
 
-def test_normalize_case() -> None:
+def test_normalize_case_lowercase() -> None:
     text = "ADD X0, X1, #16"
     res, mod = normalize_case(text)
     assert mod is True
     assert res == "add x0, x1, #16"
+    assert RULE_LOWERCASE == "lowercase"
+    assert RULE_WHITESPACE == "whitespace"
