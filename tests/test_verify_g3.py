@@ -30,8 +30,7 @@ def test_fails_closed_with_no_artifacts(tmp_path, monkeypatch):
 
 def test_fails_without_alias_rule(tmp_path, monkeypatch):
     # deliberately broken fixture: every rule has a test, but none of them
-    # is alias handling - this is the actual state of the real repo right
-    # now, and must fail per §7's alias_list requirement.
+    # is alias handling - this must fail per §7's alias_list requirement.
     monkeypatch.chdir(tmp_path)
     _seed(
         tmp_path,
@@ -74,9 +73,6 @@ def test_passes_on_correct_fixture(tmp_path, monkeypatch):
     assert result.passed is True
 
 
-def test_fails_against_real_repo_state_pending_alias_handling():
-    # the actual artifacts committed by P2 right now have no alias rule -
-    # this pins that G3 correctly stays red until that's fixed, rather than
-    # silently passing something incomplete.
+def test_passes_against_real_repo_state():
     result = verify_g3_normalization()
-    assert result.passed is False
+    assert result.passed is True
