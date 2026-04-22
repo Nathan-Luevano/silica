@@ -7,7 +7,7 @@ from pysilica.analyze.normalize import Normalizer, RuleTracker
 SAMPLE_PAIRS = [
     ("  ADD X0, X1, X2  ", "add x0, x1, x2"),
     ("SUB X0, X1, #0x10", "sub x0, x1, #16"),
-    ("ORR W0, W31, W1", "orr w0, wzr, w1"),
+    ("ORR W0, W31, W1", "mov w0, w1"),
     ("ADD X0, X1, X2, LSL #0", "add x0, x1, x2"),
     ("B.HS #16", "b.cs #16"),
     ("B.LO #32", "b.cc #32"),
@@ -15,6 +15,8 @@ SAMPLE_PAIRS = [
     ("RET // return to caller", "ret"),
     ("MOV X0, X1", "mov x0, x1"),
     ("NOP ; no operation", "nop"),
+    ("SUBS XZR, X0, X1", "cmp x0, x1"),
+    ("ADDS XZR, X0, X1", "cmn x0, x1"),
 ]
 
 
