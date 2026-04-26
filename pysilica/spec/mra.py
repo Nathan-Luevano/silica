@@ -10,6 +10,14 @@ from pysilica.model import Box, InstructionForm
 
 EXPECTED_COMMIT_ID = "2026-06_rel"
 DECODE_SECTIONS = ("Decode", "Postdecode")
+# design.md §1.1 non-goals: "No SVE / SVE2 / SME... Base A64 plus Advanced
+# SIMD only." "mortlach"/"mortlach2" are ARM's internal codenames for SME/
+# SME2 in this XML release (confirmed by content: ZA tile regs, MOPA/MOPS
+# outer-product instructions, MOVA tile-to-vector) - not obvious from the
+# name alone, so allowlisting known-good classes rather than blocklisting
+# guessed-bad ones, in case a future spec release adds another SVE/SME
+# codename we haven't seen.
+IN_SCOPE_INSTR_CLASSES = frozenset({"general", "advsimd", "float", "fpsimd", "system"})
 UNDEFINED_KEYWORDS = (
     "UNDEFINED",
     "UNPREDICTABLE",
@@ -31,9 +39,11 @@ class ParsedFile:
     path: str
     commit_id: str | None
     instr_type: str | None
-    forms: tuple[InstructionForm, ...]  # only type="instruction" iclasses
-    tilings: tuple[TilingCheck, ...]  # every iclass regardless of type
+    instr_class: str | None
+    forms: tuple[InstructionForm, ...]  # only in-scope type="instruction" iclasses
+    tilings: tuple[TilingCheck, ...]  # every iclass regardless of type or scope
     has_decode_time_undefined: bool
+    out_of_scope: bool  # true when instr_class is SVE/SVE2/SME/SME2 etc
 
 
 def parse_boxes(regdiagram: ET.Element) -> tuple[Box, ...]:
@@ -88,6 +98,13 @@ def _mnemonic_of(root: ET.Element) -> str:
     return root.get("id", "")
 
 
+def _instr_class_of(root: ET.Element) -> str | None:
+    for docvar in root.iter("docvar"):
+        if docvar.get("key") == "instr-class":
+            return docvar.get("value")
+    return None
+
+
 def _gating_features(iclass: ET.Element) -> tuple[str, ...]:
     features = []
     for variant in iclass.iter("arch_variant"):
@@ -111,6 +128,8 @@ def parse_file(path: str) -> ParsedFile | None:
         return None
 
     instr_type = root.get("type")
+    instr_class = _instr_class_of(root)
+    out_of_scope = instr_type == "instruction" and instr_class not in IN_SCOPE_INSTR_CLASSES
     commit = root.find("commit_id")
     commit_id = commit.text if commit is not None else None
     mnemonic = _mnemonic_of(root)
@@ -124,8 +143,12 @@ def parse_file(path: str) -> ParsedFile | None:
             continue
         boxes = parse_boxes(regdiagram)
         ok = tiling_ok(boxes)
+        # tiling is a parser-correctness check (design.md §5.2's "free
+        # invariant") and applies regardless of scope - an SVE file with a
+        # malformed regdiagram is still a parser bug worth catching, even
+        # though its forms never enter the decode tree below.
         tilings.append(TilingCheck(file=path, iclass_id=iclass.get("id", ""), ok=ok))
-        if instr_type != "instruction":
+        if instr_type != "instruction" or out_of_scope:
             continue
         psname = regdiagram.get("psname")
         if not psname:
@@ -145,9 +168,11 @@ def parse_file(path: str) -> ParsedFile | None:
         path=path,
         commit_id=commit_id,
         instr_type=instr_type,
+        instr_class=instr_class,
         forms=tuple(forms),
         tilings=tuple(tilings),
         has_decode_time_undefined=has_undef,
+        out_of_scope=out_of_scope,
     )
 
 
