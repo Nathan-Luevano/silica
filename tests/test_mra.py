@@ -5,6 +5,7 @@ from pysilica.spec import mra
 RET_XML = """<?xml version="1.0"?>
 <instructionsection id="RET" type="instruction">
   <docvars>
+    <docvar key="instr-class" value="general"/>
     <docvar key="mnemonic" value="RET"/>
   </docvars>
   <classes>

@@ -38,6 +38,8 @@ def compile_spec(xml_dir: str | os.PathLike[str], spec_release: str) -> CompileR
     instruction_files = 0
     alias_files = 0
     decode_time_undefined_forms = 0
+    out_of_scope_files = 0
+    out_of_scope_classes: dict[str, int] = {}
 
     for pf in parsed:
         if pf.instr_type not in ("instruction", "alias"):
@@ -46,6 +48,10 @@ def compile_spec(xml_dir: str | os.PathLike[str], spec_release: str) -> CompileR
             instruction_files += 1
             if pf.has_decode_time_undefined:
                 decode_time_undefined_forms += 1
+            if pf.out_of_scope:
+                out_of_scope_files += 1
+                cls = pf.instr_class or "unknown"
+                out_of_scope_classes[cls] = out_of_scope_classes.get(cls, 0) + 1
         else:
             alias_files += 1
         if not pf.tilings:
@@ -53,6 +59,9 @@ def compile_spec(xml_dir: str | os.PathLike[str], spec_release: str) -> CompileR
         tiling_files_checked += 1
         if all(t.ok for t in pf.tilings):
             tiling_files_passed += 1
+        # pf.forms is already scope-filtered in mra.parse_file (design.md
+        # §1.1: no SVE/SVE2/SME in v1) - out-of-scope files still get
+        # box-tiling checked above, just never feed the decode tree.
         forms.extend(pf.forms)
 
     tree = tables.build_tree(forms, spec_release)
@@ -78,6 +87,8 @@ def compile_spec(xml_dir: str | os.PathLike[str], spec_release: str) -> CompileR
         "ambiguous_leaf_groups": tables.ambiguous_leaf_groups(tree),
         "instruction_files": instruction_files,
         "alias_files": alias_files,
+        "out_of_scope_files": out_of_scope_files,
+        "out_of_scope_classes": out_of_scope_classes,
         "form_count": len(forms),
         "node_count": len(tree.nodes),
     }
