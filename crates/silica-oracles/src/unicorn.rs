@@ -332,4 +332,209 @@ mod tests {
         // 0x00010000 is genuinely unallocated in ARMv8/v9
         assert!(!oracle.decode(0x00010000), "0x00010000 must be invalid");
     }
+
+    #[test]
+    fn test_unicorn_vs_spec_random_sample() {
+        use crate::spec::SpecOracle;
+        use std::path::Path;
+
+        let artifact_path = Path::new("artifacts/decode-table.bin");
+        let alt_path = Path::new("../../artifacts/decode-table.bin");
+        let path_to_use = if artifact_path.exists() {
+            artifact_path
+        } else if alt_path.exists() {
+            alt_path
+        } else {
+            return;
+        };
+
+        let spec_oracle = SpecOracle::from_file(path_to_use).expect("failed to load SpecOracle");
+        let unicorn_oracle = UnicornOracle::new().expect("failed to initialize UnicornOracle");
+
+        let mut rng_state: u64 = 0x123456789ABCDEF0;
+        let mut lcg = || -> u32 {
+            rng_state = rng_state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            (rng_state >> 32) as u32
+        };
+
+        let sample_count = 20_000;
+        let mut both_valid = 0;
+        let mut both_invalid = 0;
+        let mut false_positives = 0; // spec unallocated, unicorn valid
+        let mut false_negatives = 0; // spec allocated, unicorn invalid
+
+        let mut false_neg_samples: Vec<(u32, String)> = Vec::new();
+
+        for _ in 0..sample_count {
+            let word = lcg();
+            let spec_valid = spec_oracle.decode(word);
+            let unicorn_valid = unicorn_oracle.decode(word);
+
+            match (spec_valid, unicorn_valid) {
+                (true, true) => both_valid += 1,
+                (false, false) => both_invalid += 1,
+                (false, true) => false_positives += 1,
+                (true, false) => {
+                    false_negatives += 1;
+                    if false_neg_samples.len() < 15 {
+                        let (_, maybe_form, _) = spec_oracle.classify(word);
+                        let form_info = maybe_form
+                            .map(|f| f.psname.clone())
+                            .unwrap_or_else(|| "unknown".to_string());
+                        false_neg_samples.push((word, form_info));
+                    }
+                }
+            }
+        }
+
+        let total_agreement = both_valid + both_invalid;
+        let agreement_pct = (total_agreement as f64 / sample_count as f64) * 100.0;
+        let fn_pct = (false_negatives as f64 / sample_count as f64) * 100.0;
+        let fp_pct = (false_positives as f64 / sample_count as f64) * 100.0;
+
+        println!("=== UNICORN vs SPEC 20,000-WORD RANDOM SAMPLE ===");
+        println!("Total samples: {}", sample_count);
+        println!(
+            "Raw Agreement: {}/{} ({:.2}%)",
+            total_agreement, sample_count, agreement_pct
+        );
+        println!("Both Valid (True Positive): {}", both_valid);
+        println!("Both Invalid (True Negative): {}", both_invalid);
+        println!(
+            "False Positives (spec unallocated, unicorn valid): {} ({:.2}%)",
+            false_positives, fp_pct
+        );
+        println!(
+            "False Negatives (spec allocated, unicorn invalid): {} ({:.2}%)",
+            false_negatives, fn_pct
+        );
+        println!("Sample False Negatives (word, spec psname):");
+        for (w, psname) in &false_neg_samples {
+            println!("  0x{:08X}: {}", w, psname);
+        }
+
+        // 0% false positives: Unicorn must never call something valid if the spec says unallocated
+        assert_eq!(
+            false_positives, 0,
+            "UnicornOracle had false positives against SpecOracle"
+        );
+    }
+}
+
+#[test]
+fn test_all_oracles_cross_check() {
+    use crate::capstone::CapstoneOracle;
+    use crate::llvm::LlvmOracle;
+    use crate::spec::SpecOracle;
+    use std::path::Path;
+
+    let artifact_path = Path::new("artifacts/decode-table.bin");
+    let alt_path = Path::new("../../artifacts/decode-table.bin");
+    let path_to_use = if artifact_path.exists() {
+        artifact_path
+    } else if alt_path.exists() {
+        alt_path
+    } else {
+        return;
+    };
+
+    let spec = SpecOracle::from_file(path_to_use).expect("load spec");
+    let unicorn = UnicornOracle::new().expect("load unicorn");
+    let llvm = LlvmOracle::new().expect("load llvm");
+    let capstone = CapstoneOracle::new().expect("load capstone");
+
+    let mut rng: u64 = 0x123456789ABCDEF0;
+    let mut lcg = || -> u32 {
+        rng = rng
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        (rng >> 32) as u32
+    };
+
+    let n = 20_000;
+    let mut spec_count = 0;
+    let mut unicorn_count = 0;
+    let mut llvm_count = 0;
+    let mut capstone_count = 0;
+
+    let mut spec_and_llvm_valid = 0;
+    let mut spec_and_capstone_valid = 0;
+    let mut unicorn_and_llvm_valid = 0;
+
+    for _ in 0..n {
+        let w = lcg();
+        let s = spec.decode(w);
+        let u = unicorn.decode(w);
+        let l = llvm.decode(w);
+        let c = capstone.decode(w);
+
+        if s {
+            spec_count += 1;
+        }
+        if u {
+            unicorn_count += 1;
+        }
+        if l {
+            llvm_count += 1;
+        }
+        if c {
+            capstone_count += 1;
+        }
+
+        if s && l {
+            spec_and_llvm_valid += 1;
+        }
+        if s && c {
+            spec_and_capstone_valid += 1;
+        }
+        if u && l {
+            unicorn_and_llvm_valid += 1;
+        }
+    }
+
+    println!("=== 4-ORACLE 20,000-WORD RANDOM COMPARISON ===");
+    println!(
+        "Spec allocated:     {}/{} ({:.2}%)",
+        spec_count,
+        n,
+        spec_count as f64 / n as f64 * 100.0
+    );
+    println!(
+        "Unicorn valid:      {}/{} ({:.2}%)",
+        unicorn_count,
+        n,
+        unicorn_count as f64 / n as f64 * 100.0
+    );
+    println!(
+        "LLVM valid:         {}/{} ({:.2}%)",
+        llvm_count,
+        n,
+        llvm_count as f64 / n as f64 * 100.0
+    );
+    println!(
+        "Capstone valid:     {}/{} ({:.2}%)",
+        capstone_count,
+        n,
+        capstone_count as f64 / n as f64 * 100.0
+    );
+    println!(
+        "Spec & LLVM both:   {}/{} ({:.2}%)",
+        spec_and_llvm_valid,
+        n,
+        spec_and_llvm_valid as f64 / n as f64 * 100.0
+    );
+    println!(
+        "Spec & Capstone:    {}/{} ({:.2}%)",
+        spec_and_capstone_valid,
+        n,
+        spec_and_capstone_valid as f64 / n as f64 * 100.0
+    );
+    println!(
+        "Unicorn & LLVM:     {}/{} ({:.2}%)",
+        unicorn_and_llvm_valid,
+        n,
+        unicorn_and_llvm_valid as f64 / n as f64 * 100.0
+    );
 }
