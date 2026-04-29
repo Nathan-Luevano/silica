@@ -28,13 +28,15 @@ pub trait Oracle: Send + Sync {
         }
     }
 
-    // Crash-isolated single-instruction decode using std::panic::catch_unwind
+    // Panic-isolated single-instruction decode using std::panic::catch_unwind
+    // NOTE: catch_unwind covers Rust-level panics, not native C-level segfaults (SIGSEGV)
     fn decode_isolated(&self, word: u32) -> bool {
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.decode(word)))
             .unwrap_or(false)
     }
 
-    // Crash-isolated single-instruction disassemble using std::panic::catch_unwind
+    // Panic-isolated single-instruction disassemble using std::panic::catch_unwind
+    // NOTE: catch_unwind covers Rust-level panics, not native C-level segfaults (SIGSEGV)
     fn disassemble_isolated(&self, word: u32) -> Option<String> {
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.disassemble(word)))
             .unwrap_or(None)
