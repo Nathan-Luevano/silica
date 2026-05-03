@@ -8,7 +8,7 @@ from typing import Any
 
 import yaml
 
-from pysilica.model import InstructionForm
+from pysilica.model import AliasRef, InstructionForm
 from pysilica.spec import mra, tables
 
 RET_WORD = 0xD65F03C0
@@ -27,12 +27,14 @@ def load_spec_manifest() -> dict[str, Any]:
 class CompileResult:
     tree: tables.DecodeTree
     metrics: dict[str, object]
+    aliases: dict[str, list[dict[str, str]]]
 
 
 def compile_spec(xml_dir: str | os.PathLike[str], spec_release: str) -> CompileResult:
     parsed = mra.parse_all(xml_dir)
 
     forms: list[InstructionForm] = []
+    alias_refs: list[AliasRef] = []
     tiling_files_checked = 0
     tiling_files_passed = 0
     instruction_files = 0
@@ -52,6 +54,7 @@ def compile_spec(xml_dir: str | os.PathLike[str], spec_release: str) -> CompileR
                 out_of_scope_files += 1
                 cls = pf.instr_class or "unknown"
                 out_of_scope_classes[cls] = out_of_scope_classes.get(cls, 0) + 1
+            alias_refs.extend(pf.alias_refs)
         else:
             alias_files += 1
         if not pf.tilings:
@@ -75,6 +78,19 @@ def compile_spec(xml_dir: str | os.PathLike[str], spec_release: str) -> CompileR
         and ambiguous == 1
     )
 
+    aliases_dict: dict[str, list[dict[str, str]]] = {}
+    for aref in alias_refs:
+        base = aref.base_mnemonic.upper()
+        if base not in aliases_dict:
+            aliases_dict[base] = []
+        aliases_dict[base].append({
+            "alias_mnemonic": aref.alias_mnemonic.upper(),
+            "alias_name": aref.alias_name,
+            "alias_page_id": aref.alias_page_id,
+            "alias_file": aref.alias_file,
+            "condition": aref.condition,
+        })
+
     metrics: dict[str, object] = {
         "spec_release": spec_release,
         "tiling_files_checked": tiling_files_checked,
@@ -91,8 +107,9 @@ def compile_spec(xml_dir: str | os.PathLike[str], spec_release: str) -> CompileR
         "out_of_scope_classes": out_of_scope_classes,
         "form_count": len(forms),
         "node_count": len(tree.nodes),
+        "in_scope_alias_count": len(alias_refs),
     }
-    return CompileResult(tree=tree, metrics=metrics)
+    return CompileResult(tree=tree, metrics=metrics, aliases=aliases_dict)
 
 
 def run_and_write(artifacts_dir: str = "artifacts") -> CompileResult:
@@ -104,4 +121,5 @@ def run_and_write(artifacts_dir: str = "artifacts") -> CompileResult:
     out_dir.mkdir(parents=True, exist_ok=True)
     tables.write_decode_table(result.tree, str(out_dir / "decode-table.bin"))
     (out_dir / "g1_metrics.json").write_text(json.dumps(result.metrics, indent=2) + "\n")
+    (out_dir / "spec_aliases.json").write_text(json.dumps(result.aliases, indent=2) + "\n")
     return result
