@@ -28,6 +28,16 @@ class InstructionForm:
 
 
 @dataclass(frozen=True)
+class AliasRef:
+    base_mnemonic: str
+    alias_mnemonic: str
+    alias_name: str
+    alias_page_id: str
+    alias_file: str
+    condition: str
+
+
+@dataclass(frozen=True)
 class SpecDecodeResult:
     word: int
     allocation: Allocation
