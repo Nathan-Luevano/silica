@@ -36,9 +36,32 @@ TAXONOMY_FORMATTING = "FORMATTING"
 TAXONOMY_NORMALIZATION_UNCERTAIN = "NORMALIZATION_UNCERTAIN"
 TAXONOMY_CRASH = "CRASH"
 
+SPEC_ALIASES_DEFAULT_PATH = Path("artifacts/spec_aliases.json")
+
+
+def load_spec_aliases(path: Path | str = SPEC_ALIASES_DEFAULT_PATH) -> dict[str, list[dict[str, str]]]:
+    p = Path(path)
+    if p.exists():
+        try:
+            return json.loads(p.read_text())  # type: ignore[no-any-return]
+        except (OSError, json.JSONDecodeError):
+            pass
+    # fallback in-scope aliases derived from spec <alias_list>
+    return {
+        "ORR": [{"alias_mnemonic": "MOV"}],
+        "SUBS": [{"alias_mnemonic": "CMP"}, {"alias_mnemonic": "NEGS"}],
+        "ADDS": [{"alias_mnemonic": "CMN"}],
+        "ANDS": [{"alias_mnemonic": "TST"}],
+        "ORN": [{"alias_mnemonic": "MVN"}],
+        "SUB": [{"alias_mnemonic": "NEG"}],
+        "ASRV": [{"alias_mnemonic": "ASR"}],
+        "LSLV": [{"alias_mnemonic": "LSL"}],
+        "LSRV": [{"alias_mnemonic": "LSR"}],
+        "RORV": [{"alias_mnemonic": "ROR"}],
+    }
+
 
 def strip_comments(text: str) -> tuple[str, bool]:
-    # handles both // and ; comment styles across capstone/llvm/objdump
     cleaned = re.sub(r"(//|;).*$", "", text).strip()
     return cleaned, cleaned != text
 
@@ -49,7 +72,6 @@ def normalize_case(text: str) -> tuple[str, bool]:
 
 
 def normalize_whitespace(text: str) -> tuple[str, bool]:
-    # collapse consecutive whitespace and normalize commas/brackets
     collapsed = re.sub(r"\s+", " ", text.strip())
     collapsed = re.sub(r"\s*,\s*", ", ", collapsed)
     collapsed = re.sub(r"\[\s+", "[", collapsed)
@@ -59,7 +81,6 @@ def normalize_whitespace(text: str) -> tuple[str, bool]:
 
 
 def normalize_immediates(text: str) -> tuple[str, bool]:
-    # standardizes hex immediates #0x... to canonical decimal #...
     def repl_hex(match: re.Match[str]) -> str:
         prefix = match.group(1)
         sign = match.group(2) or ""
@@ -69,56 +90,72 @@ def normalize_immediates(text: str) -> tuple[str, bool]:
             val = -val
         return f"{prefix}#{val}"
 
-    # matches #0x10, #-0x10, # 0x10
     res = re.sub(r"(^|[,\s\[])#\s*(-?)0x([0-9a-fA-F]+)", repl_hex, text)
-    # also strip space between # and number e.g. # 16 -> #16
     res = re.sub(r"#\s+(\d+)", r"#\1", res)
     return res, res != text
 
 
 def normalize_zero_registers(text: str) -> tuple[str, bool]:
-    # wzr/xzr canonicalization when disassemblers output w31/x31 in non-sp context
     res = re.sub(r"\b(w|x)31\b", r"\g<1>zr", text)
     return res, res != text
 
 
 def normalize_shift_defaults(text: str) -> tuple[str, bool]:
-    # standardizes implicit default shift amount lsl #0
     res = re.sub(r",\s*lsl\s+#0\b", "", text)
     return res, res != text
 
 
 def normalize_conditions(text: str) -> tuple[str, bool]:
-    # hs/cs and lo/cc are exact synonyms in arm condition codes
     res = re.sub(r"\bb\.hs\b", "b.cs", text)
     res = re.sub(r"\bb\.lo\b", "b.cc", res)
     return res, res != text
 
 
 def normalize_memory_operands(text: str) -> tuple[str, bool]:
-    # standardizes [reg, #0] to [reg]
     res = re.sub(r"\[([a-zA-Z0-9_]+),\s*#0\]", r"[\1]", text)
     return res, res != text
 
 
-def normalize_spec_alias(text: str) -> tuple[str, bool]:
-    # spec-driven alias canonicalization from ARM ISA <alias_list>
+def normalize_spec_alias(
+    text: str,
+    spec_aliases: dict[str, list[dict[str, str]]] | None = None,
+) -> tuple[str, bool]:
+    # spec-driven alias canonicalization driven by ARM ISA <alias_list>
+    if spec_aliases is None:
+        spec_aliases = load_spec_aliases()
+
     res = text
-    # orr Rd, wzr/xzr, Rm / orr Rd, Rm, wzr/xzr -> mov Rd, Rm
-    res = re.sub(r"\borr\s+([wx]\d+|[wx]zr),\s*[wx]zr,\s*([wx]\d+|[wx]zr)\b", r"mov \1, \2", res)
-    res = re.sub(r"\borr\s+([wx]\d+|[wx]zr),\s*([wx]\d+|[wx]zr),\s*[wx]zr\b", r"mov \1, \2", res)
-    # subs wzr/xzr, Rn, Rm / #imm -> cmp Rn, Rm / #imm
-    res = re.sub(r"\bsubs\s+[wx]zr,\s*([wx]\d+),\s*([^,\s]+)\b", r"cmp \1, \2", res)
-    # adds wzr/xzr, Rn, Rm / #imm -> cmn Rn, Rm / #imm
-    res = re.sub(r"\badds\s+[wx]zr,\s*([wx]\d+),\s*([^,\s]+)\b", r"cmn \1, \2", res)
-    # ands wzr/xzr, Rn, Rm / #imm -> tst Rn, Rm / #imm
-    res = re.sub(r"\bands\s+[wx]zr,\s*([wx]\d+),\s*([^,\s]+)\b", r"tst \1, \2", res)
-    # orn Rd, wzr/xzr, Rm -> mvn Rd, Rm
-    res = re.sub(r"\born\s+([wx]\d+|[wx]zr),\s*[wx]zr,\s*([wx]\d+|[wx]zr)\b", r"mvn \1, \2", res)
-    # sub Rd, wzr/xzr, Rm -> neg Rd, Rm (where Rd is not wzr/xzr)
-    res = re.sub(r"\bsub\s+([wx]\d+),\s*[wx]zr,\s*([wx]\d+|[wx]zr)\b", r"neg \1, \2", res)
-    # subs Rd, wzr/xzr, Rm -> negs Rd, Rm (where Rd is not wzr/xzr)
-    res = re.sub(r"\bsubs\s+([wx]\d+),\s*[wx]zr,\s*([wx]\d+|[wx]zr)\b", r"negs \1, \2", res)
+    if "ORR" in spec_aliases and any(a.get("alias_mnemonic") == "MOV" for a in spec_aliases["ORR"]):
+        res = re.sub(r"\borr\s+([wx]\d+|[wx]zr),\s*[wx]zr,\s*([wx]\d+|[wx]zr)\b", r"mov \1, \2", res)
+        res = re.sub(r"\borr\s+([wx]\d+|[wx]zr),\s*([wx]\d+|[wx]zr),\s*[wx]zr\b", r"mov \1, \2", res)
+
+    if "SUBS" in spec_aliases and any(a.get("alias_mnemonic") == "CMP" for a in spec_aliases["SUBS"]):
+        res = re.sub(r"\bsubs\s+[wx]zr,\s*([wx]\d+),\s*([^,\s]+)\b", r"cmp \1, \2", res)
+
+    if "SUBS" in spec_aliases and any(a.get("alias_mnemonic") == "NEGS" for a in spec_aliases["SUBS"]):
+        res = re.sub(r"\bsubs\s+([wx]\d+),\s*[wx]zr,\s*([wx]\d+|[wx]zr)\b", r"negs \1, \2", res)
+
+    if "ADDS" in spec_aliases and any(a.get("alias_mnemonic") == "CMN" for a in spec_aliases["ADDS"]):
+        res = re.sub(r"\badds\s+[wx]zr,\s*([wx]\d+),\s*([^,\s]+)\b", r"cmn \1, \2", res)
+
+    if "ANDS" in spec_aliases and any(a.get("alias_mnemonic") == "TST" for a in spec_aliases["ANDS"]):
+        res = re.sub(r"\bands\s+[wx]zr,\s*([wx]\d+),\s*([^,\s]+)\b", r"tst \1, \2", res)
+
+    if "ORN" in spec_aliases and any(a.get("alias_mnemonic") == "MVN" for a in spec_aliases["ORN"]):
+        res = re.sub(r"\born\s+([wx]\d+|[wx]zr),\s*[wx]zr,\s*([wx]\d+|[wx]zr)\b", r"mvn \1, \2", res)
+
+    if "SUB" in spec_aliases and any(a.get("alias_mnemonic") == "NEG" for a in spec_aliases["SUB"]):
+        res = re.sub(r"\bsub\s+([wx]\d+),\s*[wx]zr,\s*([wx]\d+|[wx]zr)\b", r"neg \1, \2", res)
+
+    if "ASRV" in spec_aliases:
+        res = re.sub(r"\basrv\s+([wx]\d+),\s*([wx]\d+),\s*([wx]\d+)\b", r"asr \1, \2, \3", res)
+    if "LSLV" in spec_aliases:
+        res = re.sub(r"\blslv\s+([wx]\d+),\s*([wx]\d+),\s*([wx]\d+)\b", r"lsl \1, \2, \3", res)
+    if "LSRV" in spec_aliases:
+        res = re.sub(r"\blsrv\s+([wx]\d+),\s*([wx]\d+),\s*([wx]\d+)\b", r"lsr \1, \2, \3", res)
+    if "RORV" in spec_aliases:
+        res = re.sub(r"\brorv\s+([wx]\d+),\s*([wx]\d+),\s*([wx]\d+)\b", r"ror \1, \2, \3", res)
+
     return res, res != text
 
 
@@ -149,6 +186,9 @@ class NormalizationResult:
 
 
 class Normalizer:
+    def __init__(self, spec_aliases: dict[str, list[dict[str, str]]] | None = None) -> None:
+        self.spec_aliases = spec_aliases if spec_aliases is not None else load_spec_aliases()
+
     def normalize(self, text: str) -> NormalizationResult:
         applied: list[str] = []
         curr = text
@@ -193,7 +233,7 @@ class Normalizer:
             applied.append(RULE_MEMORY_OPERANDS)
             curr = s
 
-        s, modified = normalize_spec_alias(curr)
+        s, modified = normalize_spec_alias(curr, self.spec_aliases)
         if modified:
             applied.append(RULE_SPEC_ALIAS)
             curr = s
