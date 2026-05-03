@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from pysilica.analyze.normalize import RULE_SPEC_ALIAS, Normalizer, normalize_spec_alias
+from pysilica.analyze.normalize import (
+    RULE_SPEC_ALIAS,
+    Normalizer,
+    load_spec_aliases,
+    normalize_spec_alias,
+)
 
 
 def test_spec_alias_mov_orr() -> None:
@@ -65,3 +70,11 @@ def test_normalize_spec_alias_function_direct() -> None:
     out, changed = normalize_spec_alias("add x0, x1, x2")
     assert not changed
     assert out == "add x0, x1, x2"
+
+
+def test_load_spec_aliases_from_artifact() -> None:
+    aliases = load_spec_aliases()
+    assert isinstance(aliases, dict)
+    assert "ORR" in aliases
+    assert "SUBS" in aliases
+    assert any(a.get("alias_mnemonic") == "MOV" for a in aliases["ORR"])

@@ -6,7 +6,7 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 
-from pysilica.model import Box, InstructionForm
+from pysilica.model import AliasRef, Box, InstructionForm
 
 EXPECTED_COMMIT_ID = "2026-06_rel"
 DECODE_SECTIONS = ("Decode", "Postdecode")
@@ -44,6 +44,7 @@ class ParsedFile:
     tilings: tuple[TilingCheck, ...]  # every iclass regardless of type or scope
     has_decode_time_undefined: bool
     out_of_scope: bool  # true when instr_class is SVE/SVE2/SME/SME2 etc
+    alias_refs: tuple[AliasRef, ...] = ()
 
 
 def parse_boxes(regdiagram: ET.Element) -> tuple[Box, ...]:
@@ -164,6 +165,27 @@ def parse_file(path: str) -> ParsedFile | None:
             )
         )
 
+    alias_refs = []
+    if instr_type == "instruction" and not out_of_scope:
+        for aref in root.findall(".//aliasref"):
+            page_id = aref.get("aliaspageid", "")
+            afile = aref.get("aliasfile", "")
+            text_elem = aref.find("text")
+            text = text_elem.text.strip() if text_elem is not None and text_elem.text else ""
+            pref_elem = aref.find("aliaspref")
+            pref = pref_elem.text.strip() if pref_elem is not None and pref_elem.text else ""
+            alias_mnem = text.split()[0] if text else page_id.split("_")[0]
+            alias_refs.append(
+                AliasRef(
+                    base_mnemonic=mnemonic,
+                    alias_mnemonic=alias_mnem,
+                    alias_name=text,
+                    alias_page_id=page_id,
+                    alias_file=afile,
+                    condition=pref,
+                )
+            )
+
     return ParsedFile(
         path=path,
         commit_id=commit_id,
@@ -173,6 +195,7 @@ def parse_file(path: str) -> ParsedFile | None:
         tilings=tuple(tilings),
         has_decode_time_undefined=has_undef,
         out_of_scope=out_of_scope,
+        alias_refs=tuple(alias_refs),
     )
 
 

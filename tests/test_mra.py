@@ -136,3 +136,36 @@ def test_undefined_keyword_scan_true():
 def test_non_instructionsection_root_skipped(tmp_path):
     path = _write(tmp_path, "index.xml", "<encodingindex/>")
     assert mra.parse_file(str(path)) is None
+
+
+def test_alias_parsing_from_instructionsection(tmp_path):
+    xml = """<?xml version="1.0"?>
+<instructionsection id="SUBS_addsub_shift" type="instruction">
+  <docvars>
+    <docvar key="instr-class" value="general"/>
+    <docvar key="mnemonic" value="SUBS"/>
+  </docvars>
+  <alias_list howmany="1">
+    <aliasref aliaspageid="CMP_SUBS_addsub_shift" aliasfile="cmp_subs_addsub_shift.xml" hover="Compare">
+      <text>CMP (shifted register)</text>
+      <aliaspref>Rd == '11111'</aliaspref>
+    </aliasref>
+  </alias_list>
+  <classes>
+    <iclass id="iclass_subs">
+      <regdiagram form="32" psname="A64.dp.SUBS">
+        <box hibit="31" width="32" settings="32"><c>0</c><c>1</c><c>1</c><c>0</c><c>1</c><c>0</c><c>1</c><c>1</c><c>0</c><c>0</c><c>0</c><c>0</c><c>0</c><c>0</c><c>0</c><c>0</c><c>0</c><c>0</c><c>0</c><c>0</c><c>0</c><c>0</c><c>0</c><c>0</c><c>0</c><c>0</c><c>0</c><c>0</c><c>0</c><c>0</c><c>0</c><c>0</c></box>
+      </regdiagram>
+    </iclass>
+  </classes>
+</instructionsection>
+"""
+    path = _write(tmp_path, "subs.xml", xml)
+    parsed = mra.parse_file(str(path))
+    assert parsed is not None
+    assert len(parsed.alias_refs) == 1
+    aref = parsed.alias_refs[0]
+    assert aref.base_mnemonic == "SUBS"
+    assert aref.alias_mnemonic == "CMP"
+    assert aref.alias_page_id == "CMP_SUBS_addsub_shift"
+    assert aref.condition == "Rd == '11111'"
