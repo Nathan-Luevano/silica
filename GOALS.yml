@@ -9,7 +9,7 @@ goals:
     statement: Decode all 2^32 encodings through >=3 independent disassemblers with zero gaps and zero crashes
     verifier: verify_g2_exhaustive_coverage
     verifier_file: pysilica/verify/g2_exhaustive_coverage.py
-    verifier_sha256: 4367d3675a2a253cdbd2465fb3f01fc28555e637db404700407d90a35cfbccaa
+    verifier_sha256: eb1cd752e300a54e155f83c4e54939ff03445c918f180e8cc7a65007df71d3ed
     status: unverified
   - id: G3
     statement: Produce a canonical normal form making cross-tool comparison meaningful

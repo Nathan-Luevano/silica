@@ -126,7 +126,61 @@ triage code, before the first record is written.
 
 ## sweep/shards/<NNN>.json
 
-Shard completion record, one per shard, `NNN` zero-padded 0..255. Shard `i`
-covers encodings `[i * 2**24, (i + 1) * 2**24)` — 256 shards tile
-`[0, 2**32)` exactly, no gap, no overlap. Fields fixed in P3 alongside the
-sharding code.
+Shard completion record, one per shard, `NNN` zero-padded 0..255 (e.g.
+`sweep/shards/000.json` .. `sweep/shards/255.json`). Shard `i` covers
+encodings `[i * 2**24, (i + 1) * 2**24)` — 256 shards tile `[0, 2**32)`
+exactly, no gap, no overlap. Flat JSON object:
+
+```
+{
+  "shard_id": 0,
+  "start": 0,
+  "end": 16777216,
+  "oracles": ["capstone", "llvm", "spec", "unicorn"],
+  "valid_counts": {"capstone": 0, "llvm": 0, "spec": 0, "unicorn": 0},
+  "crash_count": 0,
+  "untriaged_crash_count": 0,
+  "content_hash": "<sha256 hex>",
+  "duration_ms": 0,
+  "status": "complete"
+}
+```
+
+- `oracles` — always exactly `["capstone", "llvm", "spec", "unicorn"]`, this
+  fixed alphabetical order, matching design.md §6's exhaustive tier (objdump
+  excluded per the binutils-lacks-aarch64-target finding recorded in
+  WORKLOG.md; ghidra is sampled tier, never shard-swept this way).
+- `valid_counts[oracle]` — count of the `2**24` words in this shard's range
+  that oracle classified valid. Must equal the popcount of that oracle's
+  bitmap over exactly this shard's byte range (`bitmaps/<oracle>.bin` bytes
+  `[start // 8, end // 8)`).
+- `crash_count` — words in this shard where invoking that oracle crashed
+  (segfault, panic, timeout) rather than returning valid/invalid.
+  `untriaged_crash_count` starts equal to `crash_count` and is decremented as
+  P4's triage classifies each crash; a shard may not be `"status":
+  "complete"` while `untriaged_crash_count > 0` (design.md §9's "no shard
+  marked complete with an untriaged crash count").
+- `content_hash` — sha256 hex of the four oracles' bitmap byte ranges for
+  `[start // 8, end // 8)`, concatenated in the `oracles` field's order
+  (capstone, then llvm, then spec, then unicorn). This is what "re-running a
+  shard reproduces its recorded hash" (design.md §9) checks: re-run the
+  shard, recompute this same hash from the fresh output, compare.
+- `status` — `"complete"` or `"crashed"` (shard-level abort, distinct from a
+  per-word crash counted in `crash_count`).
+
+## sweep CLI contract
+
+`silica-sweep run --shard <N> --spec-decode-table <path> --out <dir>` runs
+shard `N` (0..255) against all four exhaustive-tier oracles and:
+- writes/updates `<dir>/bitmaps/<oracle>.bin` for each oracle — the full
+  `2**32`-bit memory-mapped file (created zero-filled on first touch if
+  absent), writing only this shard's own byte range. Safe to run multiple
+  shards concurrently against the same files since ranges are disjoint.
+- writes `<dir>/sweep/shards/<NNN>.json` per the schema above.
+
+`silica-sweep verify-shard --shard <N> --spec-decode-table <path> --out
+<scratch-dir>` re-runs shard `N` in isolation, writing small per-shard-only
+bitmap slices (`2**24` bits = 2 MiB each, not the full file) under
+`<scratch-dir>/bitmaps/<oracle>-<NNN>.bin` plus a shard record at
+`<scratch-dir>/sweep/shards/<NNN>.json`, without touching any real
+`artifacts/` output. This is what G2's verifier shells out to.
