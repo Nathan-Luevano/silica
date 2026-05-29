@@ -130,9 +130,17 @@ _FIELD_POSITION = {"Rd": 0, "Rn": 1, "Rm": 2, "Ra": 3, "Rt": 1}
 
 _ZR_OPERAND_RE = re.compile(r"^[wx]zr$")
 _REG_OPERAND_RE = re.compile(r"^[wx]\d{1,2}$")
-_FIELD_ZR_EQ_RE = re.compile(r"\b(R\w*)\s*==\s*'11111'")
-_FIELD_NOT_ZR_RE = re.compile(r"\b(R\w*)\s*!=\s*'11111'")
-_FIELD_EQ_FIELD_RE = re.compile(r"\b(R\w*)\s*==\s*(R\w*)\b")
+
+# single-clause shapes this engine can actually verify from normalized
+# disassembly text alone -- each anchored to the WHOLE clause (not findall
+# over the whole condition string), since a compound condition can carry
+# other clauses (UInt(...), MoveWidePreferred(...), architectural bits like
+# A == '0', cond-code-set tests like !(cond IN {'111x'}), ...) that this
+# engine has no way to check. Every top-level clause in a condition must
+# match one of these or the whole alias is declined -- see _eval_condition.
+_ZR_EQ_CLAUSE_RE = re.compile(r"^(R\w*)\s*==\s*'11111'$")
+_NOT_ZR_CLAUSE_RE = re.compile(r"^(R\w*)\s*!=\s*'11111'$")
+_EQ_FIELD_CLAUSE_RE = re.compile(r"^(R\w*)\s*==\s*(R\w*)$")
 
 
 def _clean_alias_mnemonic(raw: str) -> str:
@@ -170,12 +178,96 @@ def _positions_for_fields(fields: list[str]) -> list[int] | None:
     return sorted(set(positions))
 
 
-def _violates_not_zr_guard(condition: str, operands: list[str]) -> bool:
-    for fname in _FIELD_NOT_ZR_RE.findall(condition):
-        pos = _FIELD_POSITION.get(fname)
-        if pos is not None and pos < len(operands) and _ZR_OPERAND_RE.match(operands[pos]):
-            return True
-    return False
+def _split_top_level(cond: str, sep: str) -> list[str]:
+    # splits on sep (e.g. " && " or " || ") but not inside parens, so an
+    # OR-group like "(Rd == '11111' || Rn == '11111')" survives an && split
+    # as one clause instead of being torn apart.
+    parts: list[str] = []
+    depth = 0
+    cur = ""
+    i = 0
+    n = len(cond)
+    sep_len = len(sep)
+    while i < n:
+        ch = cond[i]
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        if depth == 0 and cond[i : i + sep_len] == sep:
+            parts.append(cur.strip())
+            cur = ""
+            i += sep_len
+            continue
+        cur += ch
+        i += 1
+    if cur.strip():
+        parts.append(cur.strip())
+    return parts
+
+
+def _eval_single_clause(clause: str, operands: list[str]) -> tuple[bool | None, list[int]]:
+    # returns (result, drop_positions). result is None when the clause isn't
+    # one of the shapes this engine can verify from text -- callers must
+    # treat None as "give up", not as false.
+    m = _ZR_EQ_CLAUSE_RE.match(clause)
+    if m:
+        pos = _FIELD_POSITION.get(m.group(1))
+        if pos is None or pos >= len(operands):
+            return None, []
+        ok = bool(_ZR_OPERAND_RE.match(operands[pos]))
+        return ok, ([pos] if ok else [])
+
+    m = _NOT_ZR_CLAUSE_RE.match(clause)
+    if m:
+        pos = _FIELD_POSITION.get(m.group(1))
+        if pos is None or pos >= len(operands):
+            return None, []
+        return not _ZR_OPERAND_RE.match(operands[pos]), []
+
+    m = _EQ_FIELD_CLAUSE_RE.match(clause)
+    if m:
+        positions = _positions_for_fields([m.group(1), m.group(2)])
+        if not positions or len(positions) != 2 or any(p >= len(operands) for p in positions):
+            return None, []
+        lo, hi = positions
+        ok = bool(_REG_OPERAND_RE.match(operands[lo]) and operands[lo] == operands[hi])
+        return ok, ([hi] if ok else [])
+
+    return None, []
+
+
+def _eval_condition(cond: str, operands: list[str]) -> tuple[bool | None, list[int]]:
+    # every top-level (&&-joined) clause must be individually verifiable, and
+    # a parenthesized clause is only accepted as an OR-group of verifiable
+    # sub-clauses. One unverifiable clause anywhere -- AND or OR side --
+    # means the whole compound condition can't be checked, so the alias is
+    # declined rather than applied on a partial read of the condition.
+    drop_positions: list[int] = []
+    for raw_clause in _split_top_level(cond, "&&"):
+        clause = raw_clause.strip()
+        if clause.startswith("(") and clause.endswith(")"):
+            sub_clauses = _split_top_level(clause[1:-1], "||")
+            sub_results = []
+            group_drops: list[int] = []
+            for sub in sub_clauses:
+                ok, drops = _eval_single_clause(sub.strip(), operands)
+                if ok is None:
+                    return None, []
+                sub_results.append(ok)
+                if ok:
+                    group_drops.extend(drops)
+            if not any(sub_results):
+                return False, []
+            drop_positions.extend(group_drops)
+        else:
+            ok, drops = _eval_single_clause(clause, operands)
+            if ok is None:
+                return None, []
+            if not ok:
+                return False, []
+            drop_positions.extend(drops)
+    return True, drop_positions
 
 
 def _apply_one_alias(text: str, old_mnem: str, new_mnem: str, condition: str) -> str | None:
@@ -196,29 +288,11 @@ def _apply_one_alias(text: str, old_mnem: str, new_mnem: str, condition: str) ->
     if cond == "Unconditionally":
         return render(operands)
 
-    if _violates_not_zr_guard(cond, operands):
+    result, drop_positions = _eval_condition(cond, operands)
+    if result is not True:
         return None
-
-    zr_fields = _FIELD_ZR_EQ_RE.findall(cond)
-    if zr_fields:
-        positions = _positions_for_fields(zr_fields)
-        if not positions or any(p >= len(operands) for p in positions):
-            return None
-        if not all(_ZR_OPERAND_RE.match(operands[p]) for p in positions):
-            return None
-        return render([o for i, o in enumerate(operands) if i not in positions])
-
-    eq_match = _FIELD_EQ_FIELD_RE.search(cond)
-    if eq_match:
-        positions = _positions_for_fields([eq_match.group(1), eq_match.group(2)])
-        if not positions or len(positions) != 2 or any(p >= len(operands) for p in positions):
-            return None
-        lo, hi = positions
-        if not (_REG_OPERAND_RE.match(operands[lo]) and operands[lo] == operands[hi]):
-            return None
-        return render([o for i, o in enumerate(operands) if i != hi])
-
-    return None
+    drop = set(drop_positions)
+    return render([o for i, o in enumerate(operands) if i not in drop])
 
 
 def normalize_spec_alias(
@@ -227,12 +301,20 @@ def normalize_spec_alias(
 ) -> tuple[str, bool]:
     # spec-driven alias canonicalization: walks every base mnemonic and every
     # alias listed for it in the spec's <alias_list> (loaded generically, not
-    # a hand-picked subset), and applies the first alias whose condition can
-    # be verified purely from the disassembly text (an "Unconditionally"
-    # alias, a specific field forced to the zero register, or two fields
-    # required equal). Conditions that need bitfield/immediate values not
-    # visible in normalized text (UInt(imms) < UInt(immr), SysOp(...), etc.)
-    # are left alone -- conservative per design.md sec7, not a gap.
+    # a hand-picked subset), and applies the first alias whose FULL condition
+    # can be verified from the disassembly text. Conditions can be compound
+    # (&&-joined clauses, and parenthesized ||-groups) -- every clause has to
+    # be one of the recognized shapes ("Unconditionally", a field forced to
+    # the zero register, a field forced off the zero register, two fields
+    # required equal) or _eval_condition declines the whole alias, even if
+    # some other clause in the same condition would have matched. This
+    # matters: BFM -> BFC's condition is "Rn == '11111' && UInt(imms) <
+    # UInt(immr)" -- checking only the Rn clause and ignoring the UInt one
+    # used to misfire on cases where the UInt comparison doesn't actually
+    # hold. Clauses needing bitfield/immediate values, function calls, or
+    # cond-code-set membership not visible in normalized text (UInt(...),
+    # MoveWidePreferred(...), SysOp(...), A == '0', !(cond IN {...}), etc.)
+    # are left unverified -- conservative per design.md sec7, not a gap.
     if spec_aliases is None:
         spec_aliases = load_spec_aliases()
 
