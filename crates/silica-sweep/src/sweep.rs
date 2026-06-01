@@ -169,7 +169,13 @@ pub fn run_command(
         return Ok(());
     }
 
-    let scratch = out.join(".worker-tmp");
+    // per-shard scratch dir: `run` on shard N is meant to be invoked
+    // concurrently with `run` on every other shard against the same --out
+    // dir (that's the whole point of sharding). a shared ".worker-tmp"
+    // meant one shard's cleanup (remove_dir_all) could delete another
+    // still-running shard's in-flight result files -- caused real,
+    // reproducible failures under `xargs -P 16` against one --out dir.
+    let scratch = out.join(format!(".worker-tmp-{shard_id:03}"));
     std::fs::create_dir_all(&scratch).map_err(|e| e.to_string())?;
     let outcome = sweep_shard(shard_id, decode_table, self_exe, &scratch)?;
     let _ = std::fs::remove_dir_all(&scratch);
@@ -193,7 +199,7 @@ pub fn verify_shard_command(
     out: &Path,
     self_exe: &Path,
 ) -> Result<(), String> {
-    let scratch = out.join(".worker-tmp");
+    let scratch = out.join(format!(".worker-tmp-{shard_id:03}"));
     std::fs::create_dir_all(&scratch).map_err(|e| e.to_string())?;
     let outcome = sweep_shard(shard_id, decode_table, self_exe, &scratch)?;
     let _ = std::fs::remove_dir_all(&scratch);
