@@ -31,6 +31,19 @@ pub fn worker_main(
         }
     }
 
+    // TEST ONLY: deliberately hang (never return) when this exact word is
+    // handed to a worker, to prove isolate.rs's process-level timeout
+    // recovers a genuinely stuck child. Never set in normal operation.
+    if let Ok(hex) = std::env::var("SILICA_SWEEP_TEST_HANG_WORD") {
+        if let Ok(hw) = u32::from_str_radix(hex.trim_start_matches("0x"), 16) {
+            if (hw as u64) >= start && (hw as u64) < end {
+                loop {
+                    std::thread::sleep(std::time::Duration::from_secs(3600));
+                }
+            }
+        }
+    }
+
     let oracle = build_oracle(oracle_name, decode_table)?;
     let n = end - start;
     let words: Vec<u32> = (start..end).map(|w| w as u32).collect();
