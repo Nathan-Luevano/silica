@@ -263,8 +263,14 @@ impl Oracle for UnicornOracle {
             return false;
         }
 
-        // execute exactly 1 instruction step
-        let emu_err = unsafe { uc_emu_start(engine, CODE_ADDR, CODE_ADDR + 4, 0, 1) };
+        // execute exactly 1 instruction step. timeout is microseconds, not
+        // 0 (unlimited) -- WFE/WFI-class encodings block waiting for an
+        // event/interrupt that never comes with no timeout set, found by
+        // running the real sweep: two words hung forever with no way out.
+        // this is defense-in-depth; the sweep's own process-level timeout
+        // (crates/silica-sweep/src/isolate.rs) is what actually recovers.
+        const EMU_TIMEOUT_US: u64 = 2_000_000;
+        let emu_err = unsafe { uc_emu_start(engine, CODE_ADDR, CODE_ADDR + 4, EMU_TIMEOUT_US, 1) };
 
         unsafe {
             uc_hook_del(engine, h_invalid);
