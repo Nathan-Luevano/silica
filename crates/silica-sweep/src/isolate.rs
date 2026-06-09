@@ -2,13 +2,19 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
 
-// generous but bounded: a legitimate batch (even the largest, un-bisected
-// one) finishes in low single-digit seconds per the measured P3 throughput.
-// 15s catches a genuinely stuck word (e.g. an unbounded uc_emu_start on
-// WFE/WFI-class encodings -- found for real running the actual sweep,
-// two shards hung forever with no timeout anywhere in this layer) without
-// false-triggering on normal work.
-const BATCH_TIMEOUT: Duration = Duration::from_secs(15);
+// first cut of this constant (15s) was wrong: it assumed the P3-measured
+// throughput (464,100 encodings/sec) applies per-oracle, but that figure is
+// the *blended* rate across all four -- capstone/llvm/spec are near-instant,
+// unicorn (real instruction emulation, not just disassembly) dominates the
+// wall time. measured directly: a genuinely non-hung 1,048,576-word unicorn
+// batch takes ~72s (~14,500 words/sec unicorn-only). DEFAULT_BATCH_BITS is
+// 2**22 = 4,194,304 words, so a legitimate top-level unicorn batch needs
+// ~290s. 15s was timing out on every single unicorn batch regardless of any
+// real hang, triggering needless bisection at every level. 600s gives ~2x
+// margin over the measured legitimate worst case while still bounding a
+// truly infinite hang (which is what this exists to catch in the first
+// place -- see WORKLOG.md for the real one found running the actual sweep).
+const BATCH_TIMEOUT: Duration = Duration::from_secs(600);
 
 // spawn + poll instead of Command::status(), so a hung child (alive, not
 // crashed, just never returning -- distinct from the SIGSEGV case above)
