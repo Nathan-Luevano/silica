@@ -109,6 +109,14 @@ def _reproduce_one_shard(records: list[dict[str, object]]) -> dict[str, object] 
 
     scratch = Path(tempfile.mkdtemp(prefix="silica-g2-verify-"))
     try:
+        # 300s was wrong: it assumed all shards are cheap, but a shard
+        # inside a densely-allocated encoding class (e.g. B/BL's full
+        # 26-bit-immediate space) makes unicorn genuinely slow, not hung -
+        # measured for real, shards 20 and 148 legitimately took ~39min
+        # each. 3600s gives real margin over that measured worst case.
+        # subprocess.TimeoutExpired is caught below rather than left to
+        # crash silica verify outright - a slow reproduction is evidence
+        # the verifier should report as a failure, not an uncaught traceback.
         result = subprocess.run(
             [
                 str(SWEEP_BIN),
@@ -123,7 +131,7 @@ def _reproduce_one_shard(records: list[dict[str, object]]) -> dict[str, object] 
             capture_output=True,
             text=True,
             check=False,
-            timeout=300,
+            timeout=3600,
         )
         if result.returncode != 0:
             return {
@@ -146,6 +154,8 @@ def _reproduce_one_shard(records: list[dict[str, object]]) -> dict[str, object] 
                 "fresh_hash": fresh_hash,
             }
         return None
+    except subprocess.TimeoutExpired:
+        return {"reason": "verify-shard exceeded 3600s", "shard_id": shard_id}
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
 
