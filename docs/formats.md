@@ -121,8 +121,71 @@ memory-mappable. Popcount + zero-count must sum to exactly `2**32`
 
 One record per line (newline-delimited JSON, zstd-compressed). Each record
 carries a `format_version` field; consumers must reject records whose version
-they don't recognize rather than guess. Fields fixed in P4 alongside the
-triage code, before the first record is written.
+they don't recognize rather than guess. One file per shard that has any
+disagreements (`disagreements/<NNN>.zst`); a shard with zero disagreements
+produces no file, not an empty one.
+
+Record schema (`format_version: 1`):
+
+```json
+{
+  "format_version": 1,
+  "word": "0xd65f03c0",
+  "category": "VALIDITY",
+  "oracle_valid": {"capstone": true, "llvm": true, "spec": true, "unicorn": false},
+  "oracle_text": {"capstone": "ret", "llvm": "ret", "spec": "RET", "unicorn": null}
+}
+```
+
+- `category` — one of the DESIGN-FINAL.md §7 taxonomy values: `VALIDITY`,
+  `MNEMONIC`, `OPERAND`, `ALIAS`, `FORMATTING`, `NORMALIZATION_UNCERTAIN`,
+  `CRASH`. `EQUIVALENT` (from `normalize.classify_disagreement`) never
+  appears here — an equivalent pair isn't a disagreement, it's resolved,
+  and doesn't get a record at all.
+- `oracle_valid` — always all four exhaustive-tier oracles (`capstone`,
+  `llvm`, `spec`, `unicorn`), computed directly from `bitmaps/<oracle>.bin`
+  for that word — this is what makes `VALIDITY`-category records checkable
+  against the bitmaps independent of anything else in the pipeline.
+- `oracle_text` — raw disassembly text per oracle where available, `null`
+  where the oracle rejected the word (`oracle_valid[x] == false`) or where
+  text wasn't captured for that category (a pure `VALIDITY` disagreement
+  where all four already agree on invalid isn't a candidate at all — only
+  emitted when at least one oracle disagrees on validity, or all agree
+  valid but text differs post-normalization).
+- A `CRASH`-category record has `oracle_valid[oracle] == false` for the
+  crashing oracle by construction (a crash is recorded as invalid in the
+  bitmap, matching `sweep/shards/<NNN>.json`'s `crash_count` for that
+  shard) and `oracle_text[oracle] == null`; it's the `crash_count` in the
+  shard record that's authoritative for "how many crashes", these records
+  are for classifying *which* words and getting them into the same corpus
+  as everything else.
+
+**Exhaustiveness scope, stated plainly per DESIGN-FINAL.md §14 risk #2's
+fallback:** `VALIDITY`-category coverage is exhaustive — computable
+directly from the four already-swept bitmaps for every one of 2^32 words,
+no sampling. Text-level categories (`MNEMONIC`/`OPERAND`/`ALIAS`/
+`FORMATTING`/`NORMALIZATION_UNCERTAIN`) require actually disassembling a
+word through all four oracles, which the validity-only sweep did not
+capture (design.md §6: "do not store 4.3 billion decode strings"). If the
+implementation cannot exhaustively re-disassemble every all-four-valid
+word in reasonable time, it MUST state the actual sampling method and
+denominator used for text-tier categories in `g4_metrics.json` (see
+below) and in the worklog — never silently present a sample as exhaustive.
+
+## g4_metrics.json
+
+Produced alongside the corpus. Flat JSON object:
+
+- `format_version` — int
+- `shards_with_disagreements` — int, count of `disagreements/<NNN>.zst` files
+- `total_disagreements` — int, total record count across all shard files
+- `category_counts` — object, `{category: count}` for every taxonomy value
+  that appears at least once
+- `validity_tier_exhaustive` — bool, must be `true`
+- `validity_disagreements` — int, count of `VALIDITY`-category records
+- `text_tier_method` — string, one of `"exhaustive"` or `"sampled"`
+- `text_tier_sample_size` / `text_tier_population` — int, required and
+  meaningful when `text_tier_method == "sampled"`
 
 ## sweep/shards/<NNN>.json
 

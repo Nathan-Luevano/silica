@@ -21,7 +21,7 @@ goals:
     statement: Emit a reproducible disagreement corpus, every entry classified into a taxonomy
     verifier: verify_g4_disagreement_corpus
     verifier_file: pysilica/verify/g4_disagreement_corpus.py
-    verifier_sha256: 5112cd2db28ddd1fad36254eb807bc9e00d0d8fa2b1a5ea96c6bf449e9f80449
+    verifier_sha256: 7d610b518b2463463f744927a2c7a45452e5f5b0d3aaee572ca99af3e08494f0
     status: unverified
   - id: G5
     statement: Publish measured per-tool agreement rates against the spec oracle with honest denominators
