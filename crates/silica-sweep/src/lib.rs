@@ -1,5 +1,7 @@
 #![allow(missing_docs)]
 
+pub mod g4;
+pub mod g4_disasm;
 pub mod isolate;
 pub mod oracle;
 pub mod sweep;

@@ -44,6 +44,28 @@ enum Commands {
         #[arg(long = "result-file")]
         result_file: PathBuf,
     },
+    // G4 tier 1: exhaustive validity-disagreement extraction from the
+    // already-swept bitmaps, plus a reservoir sample of all-four-valid
+    // words for tier 2 (see g4.rs)
+    G4Tier1 {
+        #[arg(long)]
+        out: PathBuf,
+        #[arg(long)]
+        scratch: PathBuf,
+        #[arg(long, default_value_t = 20000)]
+        sample_size: usize,
+        #[arg(long, default_value_t = 0xC0FFEE)]
+        seed: u64,
+    },
+    // G4 tier 2 support: disassemble a word list through all four oracles
+    G4Disasm {
+        #[arg(long)]
+        words: PathBuf,
+        #[arg(long = "spec-decode-table")]
+        spec_decode_table: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+    },
 }
 
 fn main() {
@@ -70,6 +92,24 @@ fn main() {
         } => {
             silica_sweep::sweep::worker_main(&oracle, start, end, &spec_decode_table, &result_file)
         }
+        Commands::G4Tier1 {
+            out,
+            scratch,
+            sample_size,
+            seed,
+        } => silica_sweep::g4::run_tier1(&out, &scratch, sample_size, seed).map(|s| {
+            eprintln!(
+                "tier1: {} validity disagreements across {} shards, {} all-four-valid words",
+                s.validity_disagreements, s.shards_with_disagreements, s.all_valid_population
+            );
+        }),
+        Commands::G4Disasm {
+            words,
+            spec_decode_table,
+            out,
+        } => silica_sweep::g4_disasm::run_disasm(&words, &spec_decode_table, &out).map(|n| {
+            eprintln!("disasm: {n} words processed");
+        }),
     };
 
     if let Err(e) = result {
