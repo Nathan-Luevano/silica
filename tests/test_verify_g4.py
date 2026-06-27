@@ -80,6 +80,31 @@ def test_fails_with_bad_category(tmp_path, monkeypatch):
     assert result.passed is False
 
 
+def test_fails_when_metrics_total_disagrees_with_real_record_count(tmp_path, monkeypatch):
+    # deliberately broken fixture: g4_metrics.json claims 5 records but the
+    # corpus file actually has 1 - catches a metrics file that lies about
+    # corpus size without the verifier ever materializing the whole corpus.
+    _setup(
+        tmp_path,
+        monkeypatch,
+        {"capstone": set(), "llvm": set(), "spec": {5}, "unicorn": set()},
+    )
+    _write_corpus(
+        tmp_path / "artifacts" / "disagreements",
+        [
+            {
+                "format_version": 1,
+                "word": "0x5",
+                "category": "VALIDITY",
+                "oracle_valid": {"capstone": False, "llvm": False, "spec": True, "unicorn": False},
+            }
+        ],
+    )
+    _write_metrics(tmp_path / "artifacts" / "g4_metrics.json", total_disagreements=5)
+    result = verify_g4_disagreement_corpus()
+    assert result.passed is False
+
+
 def test_fails_when_sampled_without_sample_size(tmp_path, monkeypatch):
     _setup(tmp_path, monkeypatch, {o: set() for o in g4mod.ORACLES})
     _write_corpus(tmp_path / "artifacts" / "disagreements", [])
