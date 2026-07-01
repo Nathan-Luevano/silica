@@ -75,16 +75,20 @@ def _bitmap_bit(mmaps: dict[str, mmap.mmap], oracle: str, word: int) -> bool:
     return bool((byte >> (word % 8)) & 1)
 
 
-def _shard_validity_words(shard_id: int, cache: dict[int, set[int]]) -> set[int]:
-    if shard_id in cache:
-        return cache[shard_id]
+def _shard_validity_words(shard_id: int) -> set[int]:
+    # loads exactly one shard's VALIDITY words, no caching across calls - a
+    # dict cache keyed by shard_id here previously never evicted, and since
+    # SAMPLE_SIZE=20000 random words statistically land in nearly every one
+    # of the ~182 disagreement shards, that cache ended up holding almost
+    # the entire 723M-word VALIDITY corpus at once (measured: 51GB peak RSS
+    # on the real run). grouping samples by shard up front and loading one
+    # shard's set at a time bounds memory to the single largest shard.
     path = CORPUS_DIR / f"{shard_id:03d}.zst"
     words: set[int] = set()
     if path.exists():
         for r in _iter_shard_file_records(path):
             if r.get("category") == "VALIDITY":
                 words.add(int(str(r["word"]), 16))
-    cache[shard_id] = words
     return words
 
 
@@ -93,15 +97,13 @@ def _check_validity_tier_against_bitmaps() -> dict[str, object] | None:
     # straight from the swept bitmaps, and confirm every genuine validity
     # disagreement in the sample has a corresponding corpus record - not
     # just that the corpus file parses, but that it actually reflects the
-    # data it claims to summarize. only the specific shard file(s) a sample
-    # actually lands in get decompressed (at most SAMPLE_SIZE distinct
-    # shards, capped at 256 total anyway), never the whole corpus.
+    # data it claims to summarize. samples are grouped by shard first so
+    # each shard's word set is loaded, checked, and dropped before the next
+    # one is loaded - at most one shard's data is resident at a time.
     for oracle in ORACLES:
         path = BITMAPS_DIR / f"{oracle}.bin"
         if not path.exists():
             return {"missing": str(path)}
-
-    shard_cache: dict[int, set[int]] = {}
 
     with contextlib.ExitStack() as stack:
         files = [stack.enter_context(open(BITMAPS_DIR / f"{o}.bin", "rb")) for o in ORACLES]
@@ -109,20 +111,29 @@ def _check_validity_tier_against_bitmaps() -> dict[str, object] | None:
             o: mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) for o, f in zip(ORACLES, files)
         }
         rng = random.Random(0xC0FFEE)
-        missing_examples: list[str] = []
         checked = 0
         real_disagreements = 0
+        by_shard: dict[int, list[int]] = {}
         for _ in range(SAMPLE_SIZE):
             w = rng.randrange(TOTAL_BITS)
             valid = {o: _bitmap_bit(mmaps, o, w) for o in ORACLES}
             checked += 1
             if len(set(valid.values())) > 1:
                 real_disagreements += 1
-                shard_id = w // SHARD_BITS
-                if w not in _shard_validity_words(shard_id, shard_cache) and len(missing_examples) < 10:
-                    missing_examples.append(hex(w))
+                by_shard.setdefault(w // SHARD_BITS, []).append(w)
         for m in mmaps.values():
             m.close()
+
+        missing_examples: list[str] = []
+        for shard_id, words in by_shard.items():
+            shard_words = _shard_validity_words(shard_id)
+            for w in words:
+                if w not in shard_words and len(missing_examples) < 10:
+                    missing_examples.append(hex(w))
+            del shard_words
+            if len(missing_examples) >= 10:
+                break
+
         if missing_examples:
             return {
                 "reason": "real validity disagreements found in sample with no corpus record",
