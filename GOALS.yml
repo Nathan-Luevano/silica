@@ -27,7 +27,7 @@ goals:
     statement: Publish measured per-tool agreement rates against the spec oracle with honest denominators
     verifier: verify_g5_published_metrics
     verifier_file: pysilica/verify/g5_published_metrics.py
-    verifier_sha256: f3d51439c3b4198906a8055500f30b966aaf0104d4081882219d8d5a630ef769
+    verifier_sha256: 5ab96717e5233a503022e2456dc5f6c9182155367b3e44e1d2a08ee723a91244
     status: unverified
   - id: G6
     statement: Reduce >=10 disagreements to minimal reproducers suitable for filing upstream
