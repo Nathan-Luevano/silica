@@ -247,3 +247,48 @@ bitmap slices (`2**24` bits = 2 MiB each, not the full file) under
 `<scratch-dir>/bitmaps/<oracle>-<NNN>.bin` plus a shard record at
 `<scratch-dir>/sweep/shards/<NNN>.json`, without touching any real
 `artifacts/` output. This is what G2's verifier shells out to.
+
+## artifacts/report/metrics.json
+
+G5's published output: per-tool agreement against the spec oracle,
+macro and micro, honest denominators, worst tool first (design.md §32,
+P5). Flat JSON object:
+
+- `format_version` — int, `1`
+- `total_words` — int, must be `2**32`
+- `spec_valid_count` — int, must equal the popcount of `bitmaps/spec.bin`
+- `per_tool` — object keyed by `"capstone"`, `"llvm"`, `"unicorn"` (spec
+  is the baseline, never compared to itself), each value:
+  - `validity_disagreements_with_spec` — int, count of words where this
+    tool's valid/invalid classification differs from spec's. Must equal
+    `popcount(bitmaps/<tool>.bin XOR bitmaps/spec.bin)` computed directly
+    from the bitmaps, not from the (sampled) disagreement corpus.
+  - `validity_agreement_micro` — float, `(total_words -
+    validity_disagreements_with_spec) / total_words`. The standard
+    aggregate rate: every one of the 2**32 words counted once.
+  - `macro_validity_agreement` — float, the *unweighted* mean of each of
+    the 256 shards' own agreement rate (`(shard_size -
+    shard_disagreements) / shard_size`). Differs from micro whenever
+    disagreements cluster unevenly across shards (they do: see G4's
+    finding that ~3 shards are almost entirely spec-only-valid) — a
+    sparse shard and a dense shard count equally in macro, so a
+    concentrated failure mode doesn't get diluted into invisibility by
+    the vast majority of clean shards the way micro would.
+  - `text_tier_disagreements_with_spec` — int, count of disagreement
+    corpus records in a text-tier category
+    (MNEMONIC/OPERAND/ALIAS/FORMATTING/NORMALIZATION_UNCERTAIN) where
+    this tool's normalized text differs from spec's, counted by
+    streaming `disagreements/*.zst` (never materializing the corpus —
+    see the G4 OOM incident this project already hit once).
+  - `text_tier_agreement_micro` — float, `(text_tier_population -
+    text_tier_disagreements_with_spec) / text_tier_population`.
+  - `text_tier_method`, `text_tier_sample_size`, `text_tier_population`
+    — must equal `g4_metrics.json`'s same-named fields exactly (single
+    source of truth for what was actually sampled vs exhaustive; no
+    re-deriving a second, possibly-inconsistent claim here).
+- `tool_ranking_worst_first` — array of the three tool names, sorted
+  ascending by `validity_agreement_micro` (lowest agreement — i.e. worst
+  — first). This is the "lead with the least flattering framing"
+  requirement (design.md §32) made mechanically checkable: the report's
+  own ordering must match a straight sort of its own numbers, not a
+  cherry-picked one.
