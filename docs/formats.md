@@ -292,3 +292,40 @@ P5). Flat JSON object:
   requirement (design.md §32) made mechanically checkable: the report's
   own ordering must match a straight sort of its own numbers, not a
   cherry-picked one.
+
+## artifacts/reproducers/*.md
+
+G6's output: at least 10 minimal, filing-ready writeups, one per file,
+each documenting one real disagreement (design.md §33, "suitable for
+filing upstream" — Nathan files them by hand, this project does not).
+"Minimal" here means exactly one 32-bit encoding and nothing
+extraneous, not a reduced-from-something-larger test case — a single
+instruction word has no smaller reproducible unit. Each file is
+markdown with a required header block (order doesn't matter, freeform
+prose may follow it):
+
+```
+- word: 0x1a2b3c4d
+- category: OPERAND
+- tool: unicorn
+- spec: <spec oracle's normalized validity/text for this word>
+- actual: <the named tool's normalized validity/text for this word>
+```
+
+- `word` — `0x`-prefixed hex, must be a real word with a real
+  disagreement record in `artifacts/disagreements/*.zst` (looked up by
+  shard: `shard_id = word // 2**24`, decompress only that one file —
+  cheap regardless of corpus size, no reason to scan the whole thing
+  for 10 lookups). A fabricated or copy-pasted word that isn't actually
+  in the corpus fails this check.
+- `category` — must equal that record's real `category`.
+- `tool` — one of `capstone`, `llvm`, `unicorn` (the tool being
+  reported as wrong; spec is always the baseline, never the subject).
+- `spec` / `actual` — non-empty, must differ from each other (that's
+  what makes it a disagreement), and must actually match that word's
+  real corpus record: `spec` against `oracle_text["spec"]` (or
+  `oracle_valid["spec"]` when text is null), `actual` against the same
+  fields for `tool` — no putting words in the tool's mouth it didn't
+  say.
+- All 10+ files must reference distinct words — ten copies of the same
+  bug aren't ten reproducers.
