@@ -1,4 +1,10 @@
-artifacts/
+artifacts/*
+# reproducers are the actual G6 deliverable (small markdown, filed
+# upstream by hand) - unlike the multi-GB sweep/corpus artifacts they
+# need to be committed, not regenerated. git can't re-include a path
+# whose parent dir is excluded by a trailing-slash pattern, hence
+# artifacts/* (per-entry) above instead of artifacts/ (whole subtree).
+!artifacts/reproducers/
 .venv/
 target/
 __pycache__/
