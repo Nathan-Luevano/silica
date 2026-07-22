@@ -33,7 +33,7 @@ goals:
     statement: Reduce >=10 disagreements to minimal reproducers suitable for filing upstream
     verifier: verify_g6_reproducers
     verifier_file: pysilica/verify/g6_reproducers.py
-    verifier_sha256: f836d0382cf407002778702db7fd88d8b90a81cfb9102b348317e4a74545d2bd
+    verifier_sha256: 64e4c1546e2abad7e308130ee218922867e36623de76e76857c786c837a3f5f0
     status: unverified
   - id: G7
     statement: Full run reproducible from clean checkout by one command, pinned tools, stable result hash
