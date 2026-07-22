@@ -15,7 +15,10 @@ def _write_corpus(dir_):
     records = [
         {
             "format_version": 1,
-            "word": hex(w),
+            # real corpus words are zero-padded to 8 hex digits (e.g.
+            # "0x00001000") - matching that here is what exposed the
+            # hex()-doesn't-pad bug this fixture originally missed.
+            "word": f"0x{w:08x}",
             "category": "OPERAND",
             "oracle_valid": {"capstone": True, "llvm": True, "spec": True, "unicorn": True},
             "oracle_text": {"capstone": "mov x0, x1", "llvm": "mov x0, x1", "spec": "orr x0, xzr, x1", "unicorn": "mov x0, x1"},

@@ -25,7 +25,10 @@ def _find_record(word: int) -> dict[str, object] | None:
     path = CORPUS_DIR / f"{shard_id:03d}.zst"
     if not path.exists():
         return None
-    target_hex = hex(word)
+    # corpus words are always zero-padded to 8 hex digits (see the real
+    # records, e.g. "0x00000000") - plain hex() drops leading zero
+    # nibbles and silently fails to match any word below 0x10000000.
+    target_hex = f"0x{word:08x}"
     for r in _iter_shard_file_records(path):
         if str(r.get("word")) == target_hex:
             return r
