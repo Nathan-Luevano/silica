@@ -39,5 +39,5 @@ goals:
     statement: Full run reproducible from clean checkout by one command, pinned tools, stable result hash
     verifier: verify_g7_reproducibility
     verifier_file: pysilica/verify/g7_reproducibility.py
-    verifier_sha256: d668cc5cf3a92b9f1e73f97f3b7c20dccaf2273a787cefabf7d4d5e475b90211
+    verifier_sha256: 7a0ee75f1298e6eec4958da823c85e339ea1027ff7c56313c388b05228e9e17f
     status: unverified
