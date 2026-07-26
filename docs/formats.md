@@ -329,3 +329,39 @@ prose may follow it):
   say.
 - All 10+ files must reference distinct words — ten copies of the same
   bug aren't ten reproducers.
+
+## artifacts/result_hash.txt and G7's reproducibility scope
+
+G7's statement is "full run reproducible from clean checkout by one
+command, pinned tools, stable result hash" (design.md §34). A literal
+re-run of the entire 2**32-word, four-oracle sweep on every `silica
+verify` invocation is not practical (the real sweep took many hours;
+see G2/G4's worklog entries) and G2 already covers *that* kind of
+reproduction concretely, at shard granularity
+(`silica-sweep verify-shard`, re-run and hash-compared for real).
+G7 is scoped to the three concrete, cheaply-checkable parts of its own
+statement instead of re-deriving G2's expensive check a second time:
+
+1. **Pinned tools.** `environment.yml`'s dependencies for the
+   exhaustive-tier oracles and their toolchain (`capstone`, `llvmdev`,
+   `llvm-tools`, `unicorn`, `rust`) must each carry an explicit version
+   pin (`name=X.Y.Z` or `name=X.Y.Z=build`), not a floating/unpinned
+   entry - an unpinned `capstone` line means "whatever conda-forge
+   resolves today," which is not what "pinned" means.
+2. **One command.** The `Makefile` must have a target (documented, any
+   name) that chains the full pipeline in order: spec compile, sweep,
+   G4 corpus, G5 report, G6 reproducers, then the result hash itself -
+   checked structurally (the target's recipe lines reference each of
+   those steps' known commands/scripts), not by actually invoking it.
+3. **Stable result hash.** `artifacts/result_hash.txt` holds one
+   sha256 hex digest, computed deterministically over, in this fixed
+   order: `artifacts/decode-table.bin`'s bytes, each of
+   `bitmaps/{capstone,llvm,spec,unicorn}.bin`'s bytes (that fixed
+   order), `artifacts/g4_metrics.json`'s bytes, `artifacts/report/
+   metrics.json`'s bytes, then each `artifacts/reproducers/*.md` file's
+   bytes sorted by filename - one sha256 object, `.update()`-ed with
+   each in sequence, no separators. The verifier recomputes this fresh
+   from the files that actually exist (cheap - it's hashing already-
+   produced output, not re-running anything) and requires an exact
+   match. A hash that doesn't match what's actually on disk isn't
+   "stable," it's stale or fabricated.
