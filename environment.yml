@@ -3,13 +3,13 @@ channels:
   - conda-forge
 dependencies:
   - python=3.11
-  - rust
+  - rust=1.97.1
   - pkg-config
-  - capstone
-  - llvmdev
-  - llvm-tools
+  - capstone=5.0.9
+  - llvmdev=22.1.8
+  - llvm-tools=22.1.8
   - binutils
-  - unicorn
+  - unicorn=2.1.2
   - openjdk=21
   - lxml
   - numpy
