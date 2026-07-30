@@ -1,4 +1,4 @@
-.PHONY: check fmt lint test verify doctor hooks-test
+.PHONY: check fmt lint test verify doctor hooks-test all
 
 check:
 	cargo fmt --check
@@ -22,3 +22,24 @@ doctor:
 
 verify:
 	micromamba run -p ./.venv python -m pysilica.cli verify
+
+# full pipeline from a clean checkout, in order (G7). Not run as part of
+# `make check` - the 256-shard sweep alone takes many hours (see G2/G4
+# worklog entries); this documents the real one-command shape a human
+# would actually invoke. Each step's inputs/outputs are the same ones
+# every prior goal's verifier already checks against.
+all:
+	cargo build --release -p silica-sweep
+	micromamba run -p ./.venv python -m pysilica.cli compile-spec
+	for shard in $$(seq 0 255); do \
+		./target/release/silica-sweep run --shard $$shard \
+			--spec-decode-table artifacts/decode-table.bin --out artifacts; \
+	done
+	micromamba run -p ./.venv python -m pysilica.analyze.g4_run \
+		--tier1-dir artifacts/tier1 --tier2-disasm artifacts/tier2-disasm \
+		--validity-disagreements $$(cat artifacts/validity_disagreements.txt) \
+		--text-tier-sample-size $$(cat artifacts/text_tier_sample_size.txt) \
+		--text-tier-population $$(cat artifacts/text_tier_population.txt)
+	micromamba run -p ./.venv python -m pysilica.analyze.g5_report
+	micromamba run -p ./.venv python -m pysilica.analyze.g6_reproducers
+	micromamba run -p ./.venv python scripts/compute_result_hash.py

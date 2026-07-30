@@ -5,6 +5,9 @@ artifacts/*
 # whose parent dir is excluded by a trailing-slash pattern, hence
 # artifacts/* (per-entry) above instead of artifacts/ (whole subtree).
 !artifacts/reproducers/
+# result_hash.txt is a single small hex digest (G7's deliverable), not
+# a regenerable multi-GB artifact - same reasoning as reproducers above.
+!artifacts/result_hash.txt
 .venv/
 target/
 __pycache__/
