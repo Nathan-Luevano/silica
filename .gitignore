@@ -11,7 +11,12 @@ artifacts/*
 .venv/
 target/
 __pycache__/
+# internal process docs (design rationale, binding rules, append-only
+# work log) - kept on disk for local development, never published.
 DESIGN-FINAL.md
+CLAUDE.md
+START-HERE.md
+WORKLOG.md
 *.egg-info/
 *.pyc
 .mypy_cache/
