@@ -7,7 +7,10 @@ from pathlib import Path
 
 
 def last_entry_verifier_state() -> str | None:
-    text = Path("WORKLOG.md").read_text()
+    path = Path("WORKLOG.md")
+    if not path.exists():
+        return None
+    text = path.read_text()
     entries = re.split(r"\n(?=## )", text.strip())
     # CHECKPOINT entries (§10.4) use a different template with no "Verifier
     # state:" field; walk backwards to the last regular commit entry.
@@ -28,6 +31,13 @@ def actual_verify_summary() -> str:
 
 
 def main() -> int:
+    # WORKLOG.md is Nathan's local dev log, deliberately not published -
+    # a clean checkout without it isn't a drift, there's just nothing to
+    # drift-check against.
+    if not Path("WORKLOG.md").exists():
+        print("check_worklog_drift: no local WORKLOG.md, skipping (nothing published to check)")
+        return 0
+
     claimed = last_entry_verifier_state()
     if claimed is None:
         print("check_worklog_drift: no WORKLOG.md entry with a Verifier state: line", file=sys.stderr)
