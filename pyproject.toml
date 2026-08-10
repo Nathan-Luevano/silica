@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "silica"
 version = "0.1.0"
 requires-python = ">=3.11"
+license = "Apache-2.0"
 dependencies = []
 
 [project.optional-dependencies]
