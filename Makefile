@@ -1,9 +1,9 @@
 .PHONY: check fmt lint test verify doctor hooks-test all
 
 check:
-	cargo fmt --check
-	cargo clippy --workspace -- -D warnings
-	cargo test --workspace
+	micromamba run -p ./.venv cargo fmt --check
+	micromamba run -p ./.venv cargo clippy --workspace -- -D warnings
+	micromamba run -p ./.venv cargo test --workspace
 	micromamba run -p ./.venv ruff check .
 	micromamba run -p ./.venv mypy --strict pysilica
 	micromamba run -p ./.venv lint-imports
@@ -38,7 +38,7 @@ verify:
 # measured values (WORKLOG.md, 2026-08-21 f9a0f56) - a fresh run would
 # read them off g4-tier1's own stderr summary instead of hardcoding.
 all:
-	cargo build --release -p silica-sweep
+	micromamba run -p ./.venv cargo build --release -p silica-sweep
 	micromamba run -p ./.venv python -m pysilica.cli compile-spec
 	for shard in $$(seq 0 255); do \
 		./target/release/silica-sweep run --shard $$shard \
