@@ -11,6 +11,7 @@ check:
 	micromamba run -p ./.venv python scripts/no_docstrings.py
 	! grep -rnE '^\s*(///|//!)' crates/
 	micromamba run -p ./.venv python scripts/check_hooks.py
+	micromamba run -p ./.venv python scripts/check_verifier_hashes.py
 	micromamba run -p ./.venv python scripts/check_worklog_drift.py
 	# leading - : shown, not gated, until G1-G7 are actually implemented.
 	# `make verify` below is the real per-goal gate; v1 is done when both
