@@ -5,6 +5,7 @@ from pathlib import Path
 
 from . import discovery, model
 from .corpus import Corpus
+from .model import SHARD_COUNT
 
 
 @dataclass
@@ -34,7 +35,8 @@ class Session:
 
     @property
     def has_anything(self) -> bool:
-        return bool(self.artifacts.found)
+        # a stray GOALS.yml one directory up is not an artifacts tree.
+        return any(p.present for p in self.artifacts.found if p.key != "goals")
 
     def category_counts(self) -> dict[str, int]:
         if self.g4.ok and isinstance(self.g4.value, dict):
@@ -63,9 +65,16 @@ class Session:
 
     @property
     def has_sweep_evidence(self) -> bool:
-        # "all 2^32 encodings swept" is a claim about a run. don't make it
-        # from a checkout that only ships the ten reproducers.
-        return bool(self.shards) or self.metrics.ok or self.g1.ok
+        # "all 2^32 encodings swept" is a claim that the whole space was
+        # covered. one surviving shard record does not support it: either a
+        # published metrics/g1 summary, or all 256 shards, does.
+        if self.metrics.ok or self.g1.ok:
+            return True
+        return len(self.shards) == SHARD_COUNT
+
+    @property
+    def complete_shards(self) -> int:
+        return sum(1 for s in self.shards if s.status == "complete")
 
     def problems(self) -> list[str]:
         # a missing file is not a problem: a published checkout ships only

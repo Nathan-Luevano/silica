@@ -105,8 +105,15 @@ def headline(session: Session) -> RenderableType:
                 f"{pct(total_dis / TOTAL_WORDS, 1)} of the space",
             )
         )
+    readable = [r for r in session.reproducers if r.word or r.body]
+    unreadable = len(session.reproducers) - len(readable)
     tiles.append(
-        tile(str(len(session.reproducers)), "reproducers", "bold #5aa9e6", "minimal, filing-ready")
+        tile(
+            str(len(readable)),
+            "reproducers",
+            "bold #5aa9e6",
+            f"{unreadable} unreadable" if unreadable else "minimal, filing-ready",
+        )
     )
     grid = Table.grid(expand=True)
     for _ in tiles:
@@ -149,16 +156,23 @@ def tool_table(session: Session) -> RenderableType:
             commas(tool.validity_disagreements),
             Text(pct(tool.text_agreement_micro), style=DIM),
         )
-    caption = Text()
-    any_tool = next(iter(metrics.per_tool.values()), None)
-    if any_tool is not None:
-        caption.append("ranked worst first. ", style=DIM)
+    caption = Text("ranked worst first.", style=DIM)
+    methods = {
+        (t.text_method, t.text_sample_size, t.text_population) for t in metrics.per_tool.values()
+    }
+    if len(methods) == 1:
+        method, sample, population = next(iter(methods))
         caption.append(
-            f"text tier is {any_tool.text_method}: "
-            f"{commas(any_tool.text_sample_size)} of {commas(any_tool.text_population)}",
-            style=DIM,
+            f" text tier is {method}: {commas(sample)} of {commas(population)}", style=DIM
         )
-    return Group(table, caption)
+    elif methods:
+        # never fold differing per-tool denominators into one claim.
+        caption.append(" text tier denominators differ per tool - see each row", style=DIM)
+    note = Text(
+        "text-tier disagreements are corpus record counts, not per-tool measurements",
+        style=DIM,
+    )
+    return Group(table, caption, note)
 
 
 def category_table(session: Session) -> RenderableType:
@@ -251,11 +265,18 @@ def goals_table(session: Session) -> RenderableType:
     return table
 
 
+# what pysilica's verifier actually writes into GOALS.yml is "passing" /
+# "failing"; "unverified" is the pre-run state. anything else is shown
+# verbatim rather than guessed at.
+PASSING = frozenset({"passing", "pass", "passed", "verified"})
+FAILING = frozenset({"failing", "fail", "failed"})
+
+
 def status_text(goal: Goal) -> Text:
-    status = goal.status.lower()
-    if status in ("pass", "verified", "passed"):
+    status = goal.status.strip().lower()
+    if status in PASSING:
         return Text("PASS", style=f"bold {GOOD}")
-    if status in ("fail", "failed"):
+    if status in FAILING:
         return Text("FAIL", style=f"bold {BAD}")
     return Text(goal.status or "unknown", style=WARN)
 
@@ -278,18 +299,21 @@ def shard_detail(
             Text(str(session.artifacts.path("shards") / f"{shard_id:03d}.json"), style=DIM),
         )
     start, end = shard.start, shard.end
+    label_w = 11 if compact else 14
     rows: list[RenderableType] = [
         Text(f"shard {shard.label}", style=ACCENT),
-        _kv("word range", Text(f"0x{start:08x} .. 0x{end - 1:08x}", style="#8fa3b0"), 14),
-        _kv("status", Text(shard.status, style=GOOD if shard.status == "complete" else BAD), 14),
-        _kv("sweep time", Text(_ms(shard.duration_ms), style="#8fa3b0"), 14),
+        _kv("words", Text(f"0x{start:08x}..0x{end - 1:08x}", style="#8fa3b0"), label_w),
+        _kv(
+            "status", Text(shard.status, style=GOOD if shard.status == "complete" else BAD), label_w
+        ),
+        _kv("sweep time", Text(_ms(shard.duration_ms), style="#8fa3b0"), label_w),
         _kv(
             "crashes",
             Text(
                 f"{shard.crash_count} ({shard.untriaged_crash_count} untriaged)",
                 style=BAD if shard.crash_count else DIM,
             ),
-            14,
+            label_w,
         ),
     ]
     table = Table(box=SIMPLE, expand=True, pad_edge=False, header_style=DIM)
@@ -326,10 +350,16 @@ def shard_detail(
                 else "no disagreements recorded",
                 style="#8fa3b0" if shard.has_corpus else DIM,
             ),
-            14,
+            label_w,
         )
     )
-    rows.append(_kv("content hash", Text(shard.content_hash[:32] + "…", style=DIM), 14))
+    rows.append(
+        _kv(
+            "content hash",
+            Text(shard.content_hash[: 16 if compact else 32] + "…", style=DIM),
+            label_w,
+        )
+    )
     if shard.has_corpus:
         rows.append(Text(""))
         rows.append(Text("enter  browse this shard's disagreements", style=DIM))
@@ -359,7 +389,8 @@ def word_view(
     ]
     if record is None:
         body.append(Text(""))
-        body.append(Text(note or "no disagreement record for this word", style=DIM))
+        for line in (note or "no disagreement record for this word").splitlines():
+            body.append(Text(line, style=DIM))
         return Group(*body)
     body.append(_kv("category", category_text(record.category), 14))
     table = Table(box=SIMPLE, expand=True, pad_edge=False, header_style=DIM)
@@ -386,10 +417,19 @@ def word_view(
         )
     body.append(Text(""))
     body.append(table)
-    diverging = record.disagreeing_tools()
-    if diverging:
+    validity_diff = record.validity_disagreements()
+    if validity_diff:
+        body.append(Text("validity differs from spec: " + ", ".join(validity_diff), style=WARN))
+    elif spec_text:
+        # deliberately not a list of "tools whose text differs": the spec
+        # oracle emits a bare mnemonic, so a raw string compare marks every
+        # tool on every text-tier record. the record's own `category` is the
+        # sweep's normalized verdict; this reader does not second-guess it.
         body.append(
-            Text("differs from spec: " + ", ".join(diverging), style=WARN)
+            Text(
+                f"all four agree on validity; the sweep classified the text as {record.category}",
+                style=DIM,
+            )
         )
     return Group(*body)
 
