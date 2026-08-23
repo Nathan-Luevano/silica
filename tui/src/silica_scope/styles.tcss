@@ -1,0 +1,305 @@
+Screen {
+    background: #0d1117;
+    color: #c5ced6;
+}
+
+Header {
+    background: #12161c;
+    color: #7fd1b9;
+}
+
+Footer {
+    background: #12161c;
+}
+
+Footer > .footer-key--key {
+    background: #1c2229;
+    color: #7fd1b9;
+}
+
+TabbedContent Tabs {
+    background: #12161c;
+}
+
+Tabs > #tabs-list {
+    background: #12161c;
+}
+
+Tab {
+    color: #6b7683;
+    padding: 0 2;
+}
+
+Tab.-active {
+    color: #7fd1b9;
+    text-style: bold;
+}
+
+Underline > .underline--bar {
+    color: #7fd1b9;
+    background: #1c2229;
+}
+
+TabPane {
+    padding: 0 1;
+}
+
+.pane-scroll {
+    scrollbar-size-vertical: 1;
+    scrollbar-background: #12161c;
+    scrollbar-color: #2b3138;
+    scrollbar-color-hover: #3d4650;
+}
+
+.card {
+    height: auto;
+    max-width: 104;
+    border: round #232a32;
+    padding: 0 1;
+    margin: 0 0 1 0;
+}
+
+.card > Static {
+    height: auto;
+    width: 1fr;
+}
+
+#overview-body {
+    padding: 1 2 0 2;
+}
+
+#overview-body > Static {
+    height: auto;
+    max-width: 104;
+    margin: 0 0 1 0;
+}
+
+.card-title {
+    color: #6b7683;
+    text-style: bold;
+}
+
+#map-body {
+    height: 1fr;
+}
+
+#map-left {
+    width: 55;
+    padding: 1 1 0 1;
+}
+
+SpaceMap {
+    width: 51;
+    height: 17;
+}
+
+SpaceMap:focus {
+    /* no border: a focus border on a fixed-size grid shoves every cell one
+       column sideways. the cursor brackets brighten instead. */
+}
+
+#map-side {
+    width: 1fr;
+    border-left: solid #232a32;
+    padding: 1 0 0 2;
+}
+
+#map-legend {
+    height: auto;
+}
+
+#map-hot {
+    height: 1fr;
+}
+
+#corpus-controls {
+    height: auto;
+    padding: 0 0 1 0;
+}
+
+#corpus-status {
+    height: 1;
+    color: #6b7683;
+}
+
+#corpus-split {
+    height: 1fr;
+}
+
+#corpus-table {
+    width: 3fr;
+    background: #0d1117;
+}
+
+#corpus-detail {
+    width: 2fr;
+    border-left: solid #232a32;
+    padding: 0 1 0 2;
+}
+
+DataTable {
+    background: #0d1117;
+    scrollbar-size-vertical: 1;
+}
+
+DataTable > .datatable--header {
+    background: #12161c;
+    color: #6b7683;
+    text-style: none;
+}
+
+DataTable > .datatable--cursor {
+    background: #1f2b33;
+    color: #ffffff;
+}
+
+DataTable > .datatable--hover {
+    background: #161c22;
+}
+
+#repro-split, #goals-split {
+    height: 1fr;
+}
+
+#repro-list {
+    width: 40;
+    padding: 1 0 0 0;
+}
+
+#repro-detail, #goals-detail {
+    padding: 1 1 0 2;
+}
+
+#repro-detail, #goals-detail {
+    width: 1fr;
+    border-left: solid #232a32;
+    padding: 0 1 0 2;
+}
+
+#goals-table {
+    height: 1fr;
+}
+
+ListView {
+    background: #0d1117;
+    scrollbar-size-vertical: 1;
+}
+
+ListItem {
+    background: #0d1117;
+    padding: 0 1;
+    height: 1;
+}
+
+ListItem.--highlight {
+    background: #1c2731;
+}
+
+ListView:focus > ListItem.--highlight {
+    background: #27404e;
+}
+
+LookupScreen, ShardPrompt, HelpScreen {
+    align: center middle;
+    background: #05080b 75%;
+}
+
+#lookup-box {
+    width: 62;
+    height: auto;
+    border: round #7fd1b9;
+    background: #12161c;
+    padding: 1 2;
+}
+
+#lookup-box Input {
+    background: #0d1117;
+    border: tall #232a32;
+}
+
+#lookup-box Input:focus {
+    border: tall #7fd1b9;
+}
+
+#lookup-hint {
+    color: #6b7683;
+    padding: 0 0 1 0;
+}
+
+#help-box {
+    width: 78;
+    height: auto;
+    max-height: 90%;
+    border: round #7fd1b9;
+    background: #12161c;
+    padding: 1 2;
+}
+
+#empty-state {
+    align: center middle;
+    height: 1fr;
+}
+
+#empty-inner {
+    width: 78;
+    height: auto;
+}
+
+#goals-table {
+    width: 22;
+    padding: 1 0 0 0;
+}
+
+#corpus-controls {
+    padding: 1 0 1 0;
+}
+
+VerticalScroll, DataTable, ListView {
+    scrollbar-size-vertical: 1;
+    scrollbar-size-horizontal: 1;
+    scrollbar-background: #12161c;
+    scrollbar-background-hover: #12161c;
+    scrollbar-background-active: #12161c;
+    scrollbar-color: #2f3841;
+    scrollbar-color-hover: #46525e;
+    scrollbar-color-active: #7fd1b9;
+}
+
+/* stacked layout for narrow terminals */
+.narrow #corpus-split, .narrow #repro-split, .narrow #goals-split {
+    layout: vertical;
+}
+
+.narrow #corpus-table, .narrow #repro-list, .narrow #goals-table {
+    width: 1fr;
+    height: 1fr;
+}
+
+.narrow #corpus-detail, .narrow #repro-detail, .narrow #goals-detail {
+    width: 1fr;
+    height: 1fr;
+    border-left: none;
+    border-top: solid #232a32;
+    padding: 0 1;
+}
+
+/* the map keeps its side-by-side split even when narrow - the cells drop to
+   one column each, which buys back 16 columns for the detail pane. */
+.narrow #map-left {
+    width: 38;
+    padding: 1 0 0 1;
+}
+
+.narrow SpaceMap {
+    width: 35;
+}
+
+
+
+.narrow #map-hot {
+    display: none;
+}
+
+.narrow #help-box, .narrow #lookup-box {
+    width: 100%;
+}
