@@ -8,7 +8,7 @@ from rich.text import Text
 from textual import on
 from textual.app import ComposeResult
 from textual.binding import Binding, BindingType
-from textual.containers import Vertical
+from textual.containers import Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Input, Label, Static
 
@@ -31,7 +31,7 @@ class HelpScreen(ModalScreen[None]):
             ("", ""),
             ("map: arrows / hjkl", "move the shard cursor"),
             ("map: enter", "open that shard in the corpus browser"),
-            ("map: m / M", "cycle the colour channel"),
+            ("map: m / M", "cycle the colour channel forwards / back"),
             ("map: x", "compute exact bitmap disagreement (needs bitmaps/)"),
             ("", ""),
             ("corpus: s", "jump to a shard"),
@@ -53,7 +53,7 @@ class HelpScreen(ModalScreen[None]):
             Text(""),
             Text("escape or q to close", style="#6b7683"),
         )
-        with Vertical(id="help-box"):
+        with VerticalScroll(id="help-box", classes="pane-scroll"):
             yield Static(body)
 
 

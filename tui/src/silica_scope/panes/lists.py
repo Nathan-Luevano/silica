@@ -102,6 +102,11 @@ class ListsMixin(_Base):
         self._lookup_word(word)
 
 
+    def _rebuild_goals(self) -> None:
+        table = self.query_one("#goals-table", DataTable)
+        table.clear(columns=True)
+        self._build_goals()
+
     def _build_goals(self) -> None:
         table = self.query_one("#goals-table", DataTable)
         table.add_column("goal", width=6)

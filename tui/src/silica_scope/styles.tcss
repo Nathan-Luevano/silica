@@ -86,6 +86,7 @@ TabPane {
 #map-left {
     width: 55;
     padding: 1 1 0 1;
+    scrollbar-size-vertical: 1;
 }
 
 SpaceMap {
@@ -228,8 +229,10 @@ LookupScreen, ShardPrompt, HelpScreen {
 
 #help-box {
     width: 78;
+    max-width: 100%;
     height: auto;
     max-height: 90%;
+    scrollbar-size-vertical: 1;
     border: round #7fd1b9;
     background: #12161c;
     padding: 1 2;
@@ -302,4 +305,27 @@ VerticalScroll, DataTable, ListView {
 
 .narrow #help-box, .narrow #lookup-box {
     width: 100%;
+}
+
+/* very small terminals: the map cannot sit beside anything */
+.tiny #map-body {
+    layout: vertical;
+}
+
+.tiny #map-left {
+    width: 1fr;
+    height: 1fr;
+    padding: 0 0 0 1;
+}
+
+.tiny #map-side {
+    width: 1fr;
+    height: 9;
+    border-left: none;
+    border-top: solid #232a32;
+    padding: 0 1;
+}
+
+.tiny #map-legend, .tiny #corpus-controls {
+    height: auto;
 }

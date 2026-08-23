@@ -25,7 +25,7 @@ from textual.widgets import (
 )
 
 from . import views
-from .corpus import CorpusUnavailable, Record
+from .corpus import CorpusUnavailable, Record, StreamStatus
 from .panes.corpus import CorpusMixin
 from .panes.lists import ListsMixin
 from .panes.map import MapMixin
@@ -76,6 +76,7 @@ class ScopeApp(ListsMixin, CorpusMixin, MapMixin, App[None]):
         self._scan_token = 0
         self._loading = False
         self._stream: Iterator[Record] | None = None
+        self._stream_status = StreamStatus()
         self._exhausted = False
 
     # ---------- data helpers ----------
@@ -104,7 +105,10 @@ class ScopeApp(ListsMixin, CorpusMixin, MapMixin, App[None]):
             with TabPane("overview", id="overview"):
                 yield VerticalScroll(id="overview-body", classes="pane-scroll")
             with TabPane("map", id="map"), Horizontal(id="map-body"):
-                with Vertical(id="map-left"):
+                # scrollable: on a short terminal the 16-row grid does not
+                # fit, and clipping rows c-f with no indicator makes a quarter
+                # of the shard space silently unreachable.
+                with VerticalScroll(id="map-left", classes="pane-scroll"):
                     yield SpaceMap(self.session.shards, id="spacemap")
                     yield Static(id="map-legend")
                     yield Static(id="map-hot")
@@ -178,6 +182,7 @@ class ScopeApp(ListsMixin, CorpusMixin, MapMixin, App[None]):
             self.query_one(selector).focus()
 
     NARROW_AT = 110
+    TINY_AT = 76
 
     def on_resize(self, event: events.Resize) -> None:
         self._apply_width_class(event.size.width)
@@ -189,6 +194,7 @@ class ScopeApp(ListsMixin, CorpusMixin, MapMixin, App[None]):
         narrow = width < self.NARROW_AT
         self._narrow = narrow
         self.screen.set_class(narrow, "narrow")
+        self.screen.set_class(width < self.TINY_AT, "tiny")
         with suppress(Exception):
             self.query_one(SpaceMap).compact = narrow
 
@@ -290,14 +296,21 @@ class ScopeApp(ListsMixin, CorpusMixin, MapMixin, App[None]):
                     note = str(exc)
                 else:
                     note = (
-                        "not in the corpus: all four oracles agreed on this encoding"
+                        # absence proves validity agreement, which is
+                        # exhaustive. it proves nothing about text, which
+                        # this corpus only sampled (0.079% of the population)
+                        # - saying "all four agreed" flat would present a
+                        # sample as exhaustive.
+                        "not in the corpus.\n"
+                        "all four agreed on validity (exhaustive).\n"
+                        "text was not sampled for this word."
                         if record is None
                         else ""
                     )
             else:
                 note = (
                     f"shard {word >> 24:03d} recorded no disagreements at all - "
-                    "all four oracles agreed across its whole range"
+                    "all four oracles agreed on validity across its whole range"
                 )
         self.call_from_thread(
             self._corpus_detail, views.word_view(word, record, note, compact=self._narrow)
@@ -315,8 +328,24 @@ class ScopeApp(ListsMixin, CorpusMixin, MapMixin, App[None]):
         self.query_one("#corpus-detail-body", Static).update(renderable)
 
     def action_reload(self) -> None:
+        had_panes = self._active_tab() is not None
         self.session = load(self._root, self._goals_file)
+        if not self.session.has_anything or not had_panes:
+            # the empty state has no panes to rebuild, and a tree that only
+            # just grew artifacts needs a restart to build them.
+            self.notify(
+                f"reloaded from {self.session.root}"
+                + ("" if self.session.has_anything else " - still no artifacts there"),
+                severity="information" if self.session.has_anything else "warning",
+            )
+            return
+        # every pane, not just the overview: a stale map or goals tab that
+        # contradicts the freshly reloaded overview is worse than no reload.
         self._build_overview()
+        self._rebuild_map()
+        self._build_repro_list()
+        self._rebuild_goals()
+        self.set_shard(self.shard_id)
         self.notify(f"reloaded from {self.session.root}")
 
 
