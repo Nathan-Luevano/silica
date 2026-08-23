@@ -20,6 +20,12 @@ silica = "pysilica.cli:app"
 [tool.setuptools.packages.find]
 include = ["pysilica*"]
 
+[tool.pytest.ini_options]
+# tui/ is a separate pipx-installable package with its own venv and its own
+# dependencies (textual). without this, `make check`'s bare `pytest -q`
+# tries to collect it and dies on the import.
+testpaths = ["tests"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
