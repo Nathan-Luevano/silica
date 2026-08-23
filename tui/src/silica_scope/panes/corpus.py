@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from itertools import islice
 from typing import TYPE_CHECKING
 
@@ -9,7 +10,7 @@ from textual import on, work
 from textual.widgets import DataTable, Static
 
 from .. import views
-from ..corpus import CorpusUnavailable, Record, is_placeholder
+from ..corpus import CorpusUnavailable, Record, StreamStatus, is_placeholder
 from ..fmt import commas, human_bytes, truncate
 from ..model import TAXONOMY
 from ..screens import ShardPrompt
@@ -45,6 +46,7 @@ class CorpusMixin(_Base):
     _loading: bool
     _exhausted: bool
     _stream: Iterator[Record] | None
+    _stream_status: StreamStatus
 
     if TYPE_CHECKING:  # supplied by ScopeApp; declared, never defined, so
         # the mixin does not shadow the real method through the MRO.
@@ -125,6 +127,14 @@ class CorpusMixin(_Base):
             )
         index = corpus.cached_index(self.shard_id) if corpus else None
         rows: list[RenderableType] = [line]
+        if index is not None and index.truncated:
+            rows.append(
+                Text(
+                    " ! this shard's .zst ends mid-record - it is truncated, "
+                    "so these counts are of what survives",
+                    style="#e0335b",
+                )
+            )
         if index is not None and index.counts:
             counts = Text()
             counts.append(" indexed: ", style="#6b7683")
@@ -133,6 +143,8 @@ class CorpusMixin(_Base):
                 counts.append("   ")
                 counts.append(name, style=views.CATEGORY_STYLE.get(name, "white"))
                 counts.append(f" {commas(count)}", style="#c5ced6")
+            if index.bad_lines:
+                counts.append(f"   {commas(index.bad_lines)} unclassified", style="#e0a03a")
             rows.append(counts)
         else:
             rows.append(
@@ -178,6 +190,7 @@ class CorpusMixin(_Base):
         self.call_from_thread(self._corpus_status, Text("scanning…", style="#e0a03a"))
         found: list[Record] = []
         try:
+            self._stream_status = StreamStatus()
             if reset or self._stream is None:
                 # records inside a shard are NOT word-ordered (the text tier is
                 # a reservoir sample), so paging by "next word after the last
@@ -187,6 +200,7 @@ class CorpusMixin(_Base):
                     self.shard_id,
                     categories=self.filter_set,
                     cancelled=lambda: token != self._scan_token,
+                    status=self._stream_status,
                 )
             found = list(islice(self._stream, PAGE))
         except CorpusUnavailable as exc:
@@ -222,6 +236,8 @@ class CorpusMixin(_Base):
             index = self.session.corpus.cached_index(self.shard_id) if self.session.corpus else None
             if index is None:
                 status.append("   i to count this shard exactly", style="#6b7683")
+            if self._stream_status.truncated:
+                status.append("   ! truncated .zst", style="#e0335b")
         self._corpus_status(status)
         self._refresh_corpus_controls()
 
@@ -252,6 +268,15 @@ class CorpusMixin(_Base):
         self.filter_index = (self.filter_index + 1) % (2 + len(TAXONOMY))
         self.set_shard(self.shard_id)
 
+    def key_escape(self) -> None:
+        if self._active_tab() != "corpus" or not self._loading:
+            return
+        # bump the token: the worker checks it every chunk and stops.
+        self._scan_token += 1
+        self._stream = None
+        self._loading = False
+        self._corpus_status(Text("scan cancelled - n to start a fresh page", style="#e0a03a"))
+
     def key_n(self) -> None:
         if self._active_tab() != "corpus" or self._loading or self._exhausted:
             return
@@ -270,13 +295,21 @@ class CorpusMixin(_Base):
             return
         shard_id = self.shard_id
 
+        # throttled hard: call_from_thread blocks the worker until the UI
+        # thread runs the callable, so one update per chunk means thousands
+        # of them queued ahead of the user's next keystroke - measured at a
+        # 3-second input stall on a dense shard.
+        last = [0.0, -1]
+
         def progress(fraction: float) -> None:
+            now = time.monotonic()
+            percent = int(fraction * 100)
+            if percent == last[1] or now - last[0] < 0.1:
+                return
+            last[0], last[1] = now, percent
             self.call_from_thread(
                 self._corpus_status,
-                Text(
-                    f"indexing shard {shard_id:03d}: {fraction * 100:.0f}%",
-                    style="#e0a03a",
-                ),
+                Text(f"indexing shard {shard_id:03d}: {percent}%", style="#e0a03a"),
             )
 
         try:

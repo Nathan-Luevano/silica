@@ -6,6 +6,7 @@ from rich.console import Group
 from rich.table import Table
 from rich.text import Text
 from textual import on, work
+from textual.containers import VerticalScroll
 from textual.widgets import Static, TabbedContent
 
 from .. import views
@@ -45,6 +46,21 @@ class MapMixin(_Base):
     def _map_moved(self, event: ShardHighlighted) -> None:
         self._refresh_map_detail(event.shard_id)
         self._refresh_map_legend()
+        self._keep_cursor_visible(event.shard_id)
+
+    def _keep_cursor_visible(self, shard_id: int) -> None:
+        try:
+            container = self.query_one("#map-left", VerticalScroll)
+        except Exception:  # noqa: BLE001 - not mounted yet
+            return
+        row = 1 + shard_id // 16  # +1 for the column header line
+        top = container.scroll_offset.y
+        height = max(container.size.height, 1)
+        if row <= top:
+            # keep the column-header line in view when scrolling up
+            container.scroll_to(y=max(row - 1, 0), animate=False)
+        elif row >= top + height:
+            container.scroll_to(y=row - height + 1, animate=False)
 
     @on(ShardChosen)
     def _map_chosen(self, event: ShardChosen) -> None:
@@ -112,6 +128,18 @@ class MapMixin(_Base):
         if self._active_tab() != "map":
             return
         self.query_one(SpaceMap).cycle_mode(1)
+        self._refresh_map_legend()
+
+    def key_upper_m(self) -> None:  # textual names shift+m "upper_m"
+        if self._active_tab() != "map":
+            return
+        self.query_one(SpaceMap).cycle_mode(-1)
+        self._refresh_map_legend()
+
+    def _rebuild_map(self) -> None:
+        smap = self.query_one(SpaceMap)
+        smap.set_shards(self.session.shards)
+        self._refresh_map_detail(smap.cursor)
         self._refresh_map_legend()
 
     def key_x(self) -> None:

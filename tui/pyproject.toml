@@ -18,6 +18,9 @@ classifiers = [
   "Topic :: Software Development :: Disassemblers",
 ]
 dependencies = [
+  # rich is imported directly throughout views.py and panes/, not only via
+  # textual - declare it rather than lean on a transitive dependency.
+  "rich>=13.0",
   "textual>=0.80",
   "zstandard>=0.22",
   "PyYAML>=6.0",

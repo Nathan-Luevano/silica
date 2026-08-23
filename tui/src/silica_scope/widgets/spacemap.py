@@ -102,9 +102,13 @@ class SpaceMap(Widget, can_focus=True):
 
     def __init__(self, shards: list[Shard], **kwargs: object) -> None:
         super().__init__(**kwargs)  # type: ignore[arg-type]
-        self.shards = shards
         self.exact: dict[int, float] = {}
+        self.set_shards(shards)
+
+    def set_shards(self, shards: list[Shard]) -> None:
+        self.shards = shards
         self._by_id = {s.shard_id: s for s in shards}
+        self.refresh()
 
     @property
     def mode(self) -> MapMode:
