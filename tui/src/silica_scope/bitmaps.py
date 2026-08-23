@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 from .model import SHARD_COUNT, TOOLS
@@ -37,6 +38,9 @@ def exact_disagreement_fractions(bitmaps_dir: Path) -> dict[int, float]:
                     diff = (int.from_bytes(chunk, "little") ^ spec_int).bit_count()
                     worst = max(worst, diff)
                 out[shard_id] = worst / (SHARD_BYTES * 8)
+                # int.from_bytes and int.bit_count hold the GIL; without this
+                # the UI thread waits seconds for its next keystroke.
+                time.sleep(0)
     finally:
         for fh in handles.values():
             fh.close()

@@ -9,6 +9,12 @@ from typing import Any
 from .model import ORACLES, SHARD_SIZE, TAXONOMY
 
 CHUNK = 1 << 20
+# zstandard releases the GIL while decompressing, and a real terminal was
+# measured answering a keypress in 30 ms while indexing the densest shard, so
+# no artificial yielding is needed here. (A ~3 s stall shows up under
+# textual's run_test pilot, but that is the harness waiting for the worker's
+# message queue to settle, not input latency.) What did matter was throttling
+# the progress callback - see panes/corpus.py.
 SUPPORTED_FORMAT_VERSIONS = frozenset({1})
 
 # the sweep records unicorn's verdict as this literal when the oracle said
@@ -58,21 +64,15 @@ class Record:
     def shard_id(self) -> int:
         return self.word >> 24
 
-    def disagreeing_tools(self) -> list[str]:
+    def validity_disagreements(self) -> list[str]:
+        # validity only, and deliberately so: it is decidable straight from
+        # the bitmaps. text is not - the spec oracle emits a bare mnemonic,
+        # so comparing strings flags every tool on every text-tier record.
+        # the record's own `category` is the sweep's normalized verdict.
         spec = self.oracle_valid.get("spec")
-        out = []
-        for name in ORACLES:
-            if name == "spec":
-                continue
-            if self.oracle_valid.get(name) != spec:
-                out.append(name)
-                continue
-            a, b = self.oracle_text.get(name), self.oracle_text.get("spec")
-            if is_placeholder(a) or is_placeholder(b):
-                continue
-            if a.strip().lower() != b.strip().lower():  # type: ignore[union-attr]
-                out.append(name)
-        return out
+        return [
+            name for name in ORACLES if name != "spec" and self.oracle_valid.get(name) != spec
+        ]
 
 
 def parse_record(line: bytes) -> Record | None:
@@ -107,15 +107,28 @@ def parse_record(line: bytes) -> Record | None:
 
 
 @dataclass
+class StreamStatus:
+    # a truncated zstd frame does not raise: the reader just returns EOF
+    # early. for newline-delimited JSON the tell is that the stream stopped
+    # mid-record, so the last thing read is not a newline.
+    truncated: bool = False
+
+
+@dataclass
 class ShardIndex:
     shard_id: int
     counts: dict[str, int] = field(default_factory=dict)
     total: int = 0
     bad_lines: int = 0
+    truncated: bool = False
 
     @property
     def text_tier_total(self) -> int:
         return sum(v for k, v in self.counts.items() if k != "VALIDITY")
+
+    @property
+    def classified(self) -> int:
+        return sum(self.counts.values())
 
 
 class Corpus:
@@ -130,13 +143,22 @@ class Corpus:
         return self.directory / f"{shard_id:03d}.zst"
 
     def has_shard(self, shard_id: int) -> bool:
-        return self.shard_path(shard_id).is_file()
+        # Path.is_file() propagates EACCES rather than swallowing it, and an
+        # unreadable disagreements/ must not take the whole reader down.
+        try:
+            return self.shard_path(shard_id).is_file()
+        except OSError:
+            return False
 
     def shard_ids(self) -> list[int]:
         if not self.available():
             return []
         out = []
-        for p in sorted(self.directory.glob("*.zst")):
+        try:
+            candidates = sorted(self.directory.glob("*.zst"))
+        except OSError:
+            return []
+        for p in candidates:
             try:
                 out.append(int(p.stem, 10))
             except ValueError:
@@ -149,14 +171,15 @@ class Corpus:
         markers: list[bytes] | None = None,
         on_progress: Callable[[float], None] | None = None,
         cancelled: Callable[[], bool] | None = None,
+        status: StreamStatus | None = None,
     ) -> Iterator[bytes]:
         path = self.shard_path(shard_id)
-        if not path.is_file():
+        if not self.has_shard(shard_id):
             raise CorpusUnavailable(f"no corpus file for shard {shard_id:03d} ({path})")
         try:
             size = path.stat().st_size or 1
-        except OSError:
-            size = 1
+        except OSError as exc:
+            raise CorpusUnavailable(f"cannot read {path}: {exc}") from exc
         dctx = _decompressor()
         with path.open("rb") as fh:
             reader = dctx.stream_reader(fh)
@@ -186,8 +209,13 @@ class Corpus:
                 if markers and not any(m in body for m in markers):
                     continue
                 yield from body.split(b"\n")
-            if tail.strip() and (not markers or any(m in tail for m in markers)):
-                yield tail
+            if tail.strip():
+                # a complete ndjson stream ends on a newline; leftovers mean
+                # the frame stopped mid-record.
+                if status is not None:
+                    status.truncated = True
+                if not markers or any(m in tail for m in markers):
+                    yield tail
         if on_progress is not None:
             on_progress(1.0)
 
@@ -198,6 +226,7 @@ class Corpus:
         limit: int | None = None,
         on_progress: Callable[[float], None] | None = None,
         cancelled: Callable[[], bool] | None = None,
+        status: StreamStatus | None = None,
     ) -> Iterator[Record]:
         # the raw-bytes prefilter matters: a dense shard is ~11M lines, and
         # json.loads on every one of them to throw 99.99% away is the
@@ -207,7 +236,7 @@ class Corpus:
             for c in sorted(categories):
                 markers.extend(_key_markers("category", c))
         emitted = 0
-        for line in self._stream(shard_id, markers or None, on_progress, cancelled):
+        for line in self._stream(shard_id, markers or None, on_progress, cancelled, status):
             if not line:
                 continue
             if markers and not any(m in line for m in markers):
@@ -219,17 +248,6 @@ class Corpus:
             emitted += 1
             if limit is not None and emitted >= limit:
                 return
-
-    def _spacing_variant(self, shard_id: int) -> int:
-        # probe one line rather than paying for both marker spellings on
-        # every chunk of a multi-GB stream.
-        for line in self._stream(shard_id):
-            if b'"category":"' in line:
-                return 0
-            if b'"category": "' in line:
-                return 1
-            break
-        return 0
 
     def index_shard(
         self,
@@ -245,8 +263,11 @@ class Corpus:
         if not path.is_file():
             self._index[shard_id] = idx
             return idx
-        variant = self._spacing_variant(shard_id)
-        markers = {c: (_key_markers("category", c)[variant],) for c in TAXONOMY}
+        # both spellings, always. probing one line and locking the shard to
+        # that variant was wrong: a real shard mixes them - 008.zst holds
+        # 6,549,504 compact VALIDITY records and 1,766 spaced text-tier ones,
+        # and the probe threw away the interesting 1,766.
+        markers = {c: _key_markers("category", c) for c in TAXONOMY}
         overlap = max(len(m) for variants in markers.values() for m in variants) - 1
         dctx = _decompressor()
         counts = dict.fromkeys(TAXONOMY, 0)
@@ -255,6 +276,7 @@ class Corpus:
             size = path.stat().st_size
         except OSError:
             size = 0
+        last_chunk = b""
         with path.open("rb") as fh:
             reader = dctx.stream_reader(fh)
             carry = b""
@@ -267,6 +289,7 @@ class Corpus:
                     break
                 if cancelled is not None and cancelled():
                     raise CorpusUnavailable("indexing cancelled")
+                last_chunk = chunk
                 total += chunk.count(b"\n")
                 head = chunk[:overlap]
                 bridge = carry + head
@@ -287,8 +310,11 @@ class Corpus:
                     progress(min(fh.tell() / size, 1.0))
         idx.counts = {k: v for k, v in counts.items() if v}
         idx.total = total
-        classified = sum(idx.counts.values())
-        idx.bad_lines = max(total - classified, 0)
+        idx.truncated = bool(last_chunk) and not last_chunk.endswith(b"\n")
+        if idx.truncated:
+            total += 1  # the partial final record still exists on disk
+            idx.total = total
+        idx.bad_lines = max(total - idx.classified, 0)
         self._index[shard_id] = idx
         if progress is not None:
             progress(1.0)
@@ -308,9 +334,8 @@ class Corpus:
         return None
 
     def shard_bytes(self, shard_id: int) -> int:
-        path = self.shard_path(shard_id)
         try:
-            return path.stat().st_size if path.is_file() else 0
+            return self.shard_path(shard_id).stat().st_size
         except OSError:
             return 0
 
