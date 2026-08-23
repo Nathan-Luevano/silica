@@ -41,7 +41,10 @@ def report(root: Path, goals_file: Path | None) -> int:
     from . import views
     from .session import load
 
-    console = Console()
+    # piped output defaults to 80 columns, which truncates the tool names and
+    # the percentages down to ellipses. the report has a floor.
+    probe = Console()
+    console = Console(width=max(probe.width, 104))
     session = load(root, goals_file)
     if not session.has_anything:
         console.print(
