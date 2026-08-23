@@ -17,6 +17,12 @@ async def settle(pilot, predicate, tries: int = 80) -> bool:  # type: ignore[no-
     return False
 
 
+def flat_text(app: ScopeApp) -> str:
+    # the detail panes wrap, so a phrase that must appear can be split across
+    # lines; collapse whitespace before asserting on prose.
+    return " ".join(screen_text(app).split())
+
+
 def screen_text(app: ScopeApp) -> str:
     screen = app.screen
     return "\n".join(
@@ -371,3 +377,150 @@ async def test_exact_channel_says_so_when_there_are_no_bitmaps(full_artifacts: P
             await pilot.pause()
         assert not app.query_one(SpaceMap).exact
         assert app.is_running
+
+
+@pytest.mark.asyncio
+async def test_reload_in_the_empty_state_does_not_crash(tmp_path: Path) -> None:
+    # r is advertised in the footer and the empty screen tells you to point
+    # it somewhere real, so r is the likeliest key to be pressed there.
+    app = ScopeApp(tmp_path / "nothing-here")
+    async with app.run_test(size=(100, 30)) as pilot:
+        await pilot.press("r")
+        await pilot.pause()
+        await pilot.press("r")
+        await pilot.pause()
+        assert app.is_running
+        assert "no SILICA artifacts here" in screen_text(app)
+
+
+@pytest.mark.asyncio
+async def test_reload_refreshes_every_pane_not_just_the_overview(
+    full_artifacts: Path, tmp_path: Path
+) -> None:
+    import shutil
+
+    live = tmp_path / "live" / "artifacts"
+    live.mkdir(parents=True)
+    shutil.copytree(full_artifacts / "reproducers", live / "reproducers")
+    (live / "result_hash.txt").write_text("c" * 64)
+    app = ScopeApp(live, tmp_path / "live" / "GOALS.yml")
+    async with app.run_test(size=(140, 40)) as pilot:
+        await pilot.press("5")
+        await settle(pilot, lambda: "no goals file" in screen_text(app))
+        # the tree grows real artifacts underneath a running reader
+        shutil.copytree(full_artifacts / "sweep", live / "sweep")
+        shutil.copy(full_artifacts.parent / "GOALS.yml", tmp_path / "live" / "GOALS.yml")
+        await pilot.press("r")
+        await settle(pilot, lambda: "no goals file" not in screen_text(app))
+        assert "Parse the ARM ISA XML" in screen_text(app)
+        await pilot.press("2")
+        await settle(pilot, lambda: "no shard record on disk" not in screen_text(app))
+        text = screen_text(app)
+        assert "shard 000" in text
+        assert "no shard record on disk" not in text
+
+
+@pytest.mark.asyncio
+async def test_unreadable_corpus_directory_does_not_stop_startup(
+    full_artifacts: Path,
+) -> None:
+    import os
+
+    os.chmod(full_artifacts / "disagreements", 0o000)
+    try:
+        app = ScopeApp(full_artifacts, None)
+        async with app.run_test(size=(140, 40)) as pilot:
+            await pilot.press("3")
+            await settle(pilot, lambda: "nothing to browse" in screen_text(app))
+            assert app.is_running
+    finally:
+        os.chmod(full_artifacts / "disagreements", 0o755)
+
+
+@pytest.mark.asyncio
+async def test_escape_cancels_a_running_scan(full_artifacts: Path) -> None:
+    app = ScopeApp(full_artifacts, None)
+    async with app.run_test(size=(140, 40)) as pilot:
+        await pilot.press("3")
+        await settle(pilot, lambda: len(app.records) == 3)
+        app._loading = True
+        token = app._scan_token
+        await pilot.press("escape")
+        await pilot.pause()
+        assert app._scan_token != token
+        assert not app._loading
+        assert "cancelled" in screen_text(app)
+
+
+@pytest.mark.asyncio
+async def test_shift_m_cycles_the_channel_backwards(full_artifacts: Path) -> None:
+    app = ScopeApp(full_artifacts, None)
+    async with app.run_test(size=(140, 40)) as pilot:
+        await pilot.press("2")
+        await pilot.pause()
+        smap = app.query_one(SpaceMap)
+        start = smap.mode_index
+        await pilot.press("m")
+        await pilot.pause()
+        assert smap.mode_index != start
+        await pilot.press("M")
+        await pilot.pause()
+        assert smap.mode_index == start
+
+
+@pytest.mark.asyncio
+async def test_every_key_the_help_screen_documents_is_bound(full_artifacts: Path) -> None:
+    # the help screen used to promise `escape` cancels a scan and `M` cycles
+    # backwards; neither had a handler.
+    app = ScopeApp(full_artifacts, None)
+    async with app.run_test(size=(140, 40)) as pilot:
+        await pilot.press("question_mark")
+        await settle(pilot, lambda: "SILICA scope" in screen_text(app))
+        text = screen_text(app)
+    documented = {"m", "M", "x", "s", "f", "n", "i", "r", "escape", "enter"}
+    handlers = {name[4:] for name in dir(app) if name.startswith("key_")}
+    actions = {b.key for b in app.BINDINGS if hasattr(b, "key")}
+    bound = handlers | {k for a in actions for k in a.split(",")}
+    bound |= {"escape", "enter"}  # bound on modals and on the map widget
+    missing = {k for k in documented if k not in bound and f"map: {k}" in text}
+    assert not missing, f"help documents unbound keys: {missing}"
+
+
+@pytest.mark.asyncio
+async def test_lookup_miss_does_not_claim_text_agreement(full_artifacts: Path) -> None:
+    app = ScopeApp(full_artifacts, None)
+    async with app.run_test(size=(140, 40)) as pilot:
+        await pilot.press("slash")
+        await pilot.pause()
+        for ch in "0x00000005":
+            await pilot.press(ch)
+        await pilot.press("enter")
+        await settle(pilot, lambda: "not in the corpus" in flat_text(app))
+        text = screen_text(app)
+        assert "all four agreed on validity (exhaustive)." in text
+        assert "text was not sampled for this word." in text
+
+
+@pytest.mark.asyncio
+async def test_short_terminal_can_still_reach_every_shard(full_artifacts: Path) -> None:
+    # regression: the 16-row grid used to be clipped with no scrollbar, so on
+    # a short terminal rows c-f of the shard space were unreachable.
+    from textual.containers import VerticalScroll
+
+    app = ScopeApp(full_artifacts, None)
+    async with app.run_test(size=(60, 18)) as pilot:
+        await pilot.press("2")
+        await pilot.pause()
+        container = app.query_one("#map-left", VerticalScroll)
+        assert container.size.height < 17  # the grid genuinely does not fit
+        await pilot.press("end")
+        for _ in range(10):
+            await pilot.pause()
+        assert app.query_one(SpaceMap).cursor == 255
+        cursor_row = 1 + 255 // 16
+        top = container.scroll_offset.y
+        assert top <= cursor_row < top + container.size.height
+        await pilot.press("home")
+        for _ in range(10):
+            await pilot.pause()
+        assert container.scroll_offset.y == 0

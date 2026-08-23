@@ -179,12 +179,18 @@ def test_corpus_lookup_and_miss(full_artifacts: Path) -> None:
     assert corpus.lookup(3) is None
 
 
-def test_disagreeing_tools_uses_text_as_well_as_validity(full_artifacts: Path) -> None:
-    record = Corpus(full_artifacts / "disagreements").lookup(2)
-    assert record is not None
-    # unicorn's text is the "<valid>" placeholder, not a real disassembly -
-    # counting it as a text disagreement would invent one nobody measured.
-    assert set(record.disagreeing_tools()) == {"capstone", "llvm"}
+def test_validity_disagreements_are_validity_only(full_artifacts: Path) -> None:
+    corpus = Corpus(full_artifacts / "disagreements")
+    # all four agree on validity here; the text differs, but the spec oracle
+    # emits a bare mnemonic ("ADR"), so a raw string compare would flag every
+    # tool on every text-tier record. that is not a measurement.
+    operand = corpus.lookup(2)
+    assert operand is not None
+    assert operand.validity_disagreements() == []
+    # a real validity split is reported
+    validity = corpus.lookup(0)
+    assert validity is not None
+    assert validity.validity_disagreements() == ["capstone"]
 
 
 def test_placeholder_text_is_not_a_disagreement() -> None:
@@ -205,3 +211,104 @@ def test_missing_shard_raises_a_typed_error(full_artifacts: Path) -> None:
     corpus = Corpus(full_artifacts / "disagreements")
     with pytest.raises(CorpusUnavailable):
         list(corpus.iter_records(7))
+
+
+def test_index_counts_both_json_spellings(full_artifacts: Path) -> None:
+    # regression: probing one line and locking the shard to that spelling
+    # dropped 441,360 of the real corpus's 1,000,000 text-tier records,
+    # because a real shard mixes compact and spaced JSON in one file.
+    raw = (full_artifacts / "disagreements" / "000.zst").read_bytes()
+    import zstandard
+
+    payload = zstandard.ZstdDecompressor().decompress(raw, max_output_size=1 << 20)
+    assert b'"category":"VALIDITY"' in payload
+    assert b'"category": "OPERAND"' in payload
+    index = Corpus(full_artifacts / "disagreements").index_shard(0)
+    assert index.counts == {"VALIDITY": 2, "OPERAND": 1}
+    assert index.classified == index.total
+
+
+def test_truncated_zst_is_reported_not_presented_as_complete(tmp_path: Path) -> None:
+    import json
+
+    import zstandard
+
+    from silica_scope.corpus import StreamStatus
+
+    payload = "".join(
+        json.dumps(
+            {
+                "format_version": 1,
+                "word": f"0x{w:08x}",
+                "category": "VALIDITY",
+                "oracle_valid": {"capstone": True, "llvm": False, "spec": False, "unicorn": False},
+                "oracle_text": {"capstone": None, "llvm": None, "spec": None, "unicorn": None},
+            },
+            separators=(",", ":"),
+        )
+        + "\n"
+        for w in range(20000)
+    )
+    whole = zstandard.ZstdCompressor().compress(payload.encode())
+    out = tmp_path / "trunc" / "disagreements"
+    out.mkdir(parents=True)
+    (out / "000.zst").write_bytes(whole[: int(len(whole) * 0.4)])
+    corpus = Corpus(out)
+    status = StreamStatus()
+    partial = list(corpus.iter_records(0, status=status))
+    assert 0 < len(partial) < 20000
+    assert status.truncated
+    index = corpus.index_shard(0)
+    assert index.truncated
+    assert index.total < 20000
+
+
+def test_unreadable_corpus_directory_does_not_raise(tmp_path: Path) -> None:
+    import os
+
+    root = tmp_path / "artifacts"
+    (root / "disagreements").mkdir(parents=True)
+    (root / "disagreements" / "000.zst").write_bytes(b"x")
+    (root / "result_hash.txt").write_text("a" * 64)
+    os.chmod(root / "disagreements", 0o000)
+    try:
+        corpus = Corpus(root / "disagreements")
+        assert corpus.has_shard(0) is False
+        assert corpus.shard_ids() == []
+        assert corpus.shard_bytes(0) == 0
+    finally:
+        os.chmod(root / "disagreements", 0o755)
+
+
+def test_sweep_evidence_needs_more_than_one_surviving_shard(full_artifacts: Path) -> None:
+    from silica_scope import session as session_mod
+
+    (full_artifacts / "report" / "metrics.json").unlink()
+    (full_artifacts / "g1_metrics.json").unlink()
+    loaded = session_mod.load(full_artifacts)
+    # one shard record out of 256 does not support "all 2^32, not sampled"
+    assert len(loaded.shards) == 1
+    assert not loaded.has_sweep_evidence
+
+
+def test_a_stray_goals_file_is_not_an_artifacts_tree(tmp_path: Path) -> None:
+    from silica_scope import session as session_mod
+
+    (tmp_path / "GOALS.yml").write_text("goals: []\n")
+    loaded = session_mod.load(tmp_path / "artifacts")
+    assert not loaded.has_anything
+
+
+def test_goal_status_words_the_verifier_actually_writes() -> None:
+    from silica_scope.views import status_text
+
+    def status_of(word: str) -> str:
+        return status_text(
+            model.Goal(id="G1", statement="", verifier="", verifier_file="", status=word)
+        ).plain
+
+    # pysilica writes "passing"/"failing", not "pass"/"fail"
+    assert status_of("passing") == "PASS"
+    assert status_of("failing") == "FAIL"
+    assert status_of("unverified") == "unverified"
+    assert status_of("something-new") == "something-new"
