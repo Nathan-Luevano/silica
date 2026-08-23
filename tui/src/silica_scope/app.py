@@ -202,6 +202,11 @@ class ScopeApp(ListsMixin, CorpusMixin, MapMixin, App[None]):
         self._apply_width_class(self.size.width)
         if not self.session.has_anything:
             return
+        self._initialize_panes()
+
+    def _initialize_panes(self) -> None:
+        # the first-mount bootstrap, also reused after recompose() - which
+        # rebuilds the screen's children but does not re-fire App.on_mount.
         self._build_overview()
         self._build_repro_list()
         self._build_goals()
@@ -328,15 +333,20 @@ class ScopeApp(ListsMixin, CorpusMixin, MapMixin, App[None]):
         self.query_one("#corpus-detail-body", Static).update(renderable)
 
     def action_reload(self) -> None:
-        had_panes = self._active_tab() is not None
+        had_anything = self.session.has_anything
         self.session = load(self._root, self._goals_file)
-        if not self.session.has_anything or not had_panes:
-            # the empty state has no panes to rebuild, and a tree that only
-            # just grew artifacts needs a restart to build them.
+        if self.session.has_anything != had_anything:
+            # crossing empty<->populated changes which screen compose()
+            # builds (the empty state has no tabs at all) - swap the whole
+            # screen rather than rebuild panes that were never mounted.
+            # recompose() re-runs compose() and on_mount() fresh, so it picks
+            # up right where first launch would have.
+            self.call_after_refresh(self._recompose_after_reload)
+            return
+        if not self.session.has_anything:
             self.notify(
-                f"reloaded from {self.session.root}"
-                + ("" if self.session.has_anything else " - still no artifacts there"),
-                severity="information" if self.session.has_anything else "warning",
+                f"reloaded from {self.session.root} - still no artifacts there",
+                severity="warning",
             )
             return
         # every pane, not just the overview: a stale map or goals tab that
@@ -347,5 +357,15 @@ class ScopeApp(ListsMixin, CorpusMixin, MapMixin, App[None]):
         self._rebuild_goals()
         self.set_shard(self.shard_id)
         self.notify(f"reloaded from {self.session.root}")
+
+    async def _recompose_after_reload(self) -> None:
+        await self.recompose()
+        self._apply_width_class(self.size.width)
+        if self.session.has_anything:
+            self._initialize_panes()
+        self.notify(
+            f"reloaded from {self.session.root}"
+            + ("" if self.session.has_anything else " - no artifacts there")
+        )
 
 
