@@ -137,7 +137,14 @@ def full_artifacts(tmp_path: Path) -> Path:
             },
         },
     ]
-    payload = "".join(json.dumps(r, separators=(",", ":")) + "\n" for r in records)
+    # the real corpus mixes both spellings inside one file: the sweep writes
+    # VALIDITY records compact, the text-tier pass writes them spaced. a
+    # fixture that only does one hides an entire class of bug.
+    payload = "".join(
+        json.dumps(r, separators=(",", ":") if r["category"] == "VALIDITY" else (", ", ": "))
+        + "\n"
+        for r in records
+    )
     blob = zstandard.ZstdCompressor().compress(payload.encode())
     (root / "disagreements").mkdir(parents=True, exist_ok=True)
     (root / "disagreements" / "000.zst").write_bytes(blob)
