@@ -524,3 +524,36 @@ async def test_short_terminal_can_still_reach_every_shard(full_artifacts: Path) 
         for _ in range(10):
             await pilot.pause()
         assert container.scroll_offset.y == 0
+
+@pytest.mark.asyncio
+async def test_reload_from_true_empty_rebuilds_the_ui(
+    tmp_path: Path, full_artifacts: Path
+) -> None:
+    # regression: reload used to only rebuild panes that already existed,
+    # so a tree that grew artifacts under a running reader stayed frozen on
+    # the empty-state screen while the toast claimed "reloaded".
+    import shutil
+
+    root = tmp_path / "grows"
+    app = ScopeApp(root)
+    async with app.run_test(size=(140, 40)) as pilot:
+        await pilot.pause()
+        assert "no SILICA artifacts here" in screen_text(app)
+
+        shutil.copytree(full_artifacts / "reproducers", root / "reproducers")
+        shutil.copy(full_artifacts / "result_hash.txt", root / "result_hash.txt")
+        shutil.copytree(full_artifacts / "report", root / "report")
+        shutil.copy(full_artifacts / "g1_metrics.json", root / "g1_metrics.json")
+
+        await pilot.press("r")
+        await settle(pilot, lambda: "encodings swept" in screen_text(app))
+        text = screen_text(app)
+        assert "no SILICA artifacts here" not in text
+        assert "encodings swept" in text
+
+        # and the reverse: artifacts vanish, reload rebuilds the empty screen
+        shutil.rmtree(root)
+        root.mkdir()
+        await pilot.press("r")
+        await settle(pilot, lambda: "no SILICA artifacts here" in screen_text(app))
+        assert app.is_running
