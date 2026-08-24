@@ -13,6 +13,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Input, Label, Static
 
 from . import bits
+from .views import ACCENT, ACCENT_COLOR, BAD, DIM, FG
 
 
 class HelpScreen(ModalScreen[None]):
@@ -22,7 +23,7 @@ class HelpScreen(ModalScreen[None]):
 
     def compose(self) -> ComposeResult:
         rows = (
-            ("1 - 5", "overview / map / corpus / reproducers / goals"),
+            ("1 - 4", "overview / map / corpus / reproducers"),
             ("tab, shift+tab", "cycle panes"),
             ("/ or w", "look up any 32-bit word across the corpus"),
             ("?", "this help"),
@@ -41,17 +42,17 @@ class HelpScreen(ModalScreen[None]):
             ("corpus: escape", "cancel a running scan"),
         )
         table = Table.grid(padding=(0, 3))
-        table.add_column(width=20, style="#7fd1b9", no_wrap=True)
-        table.add_column(style="#c5ced6")
+        table.add_column(width=20, style=ACCENT_COLOR, no_wrap=True)
+        table.add_column(style=FG)
         for key, description in rows:
             table.add_row(key, description)
         body = Group(
-            Text("SILICA scope", style="bold #7fd1b9"),
-            Text("a reader for an already-finished sweep - it never runs one", style="#6b7683"),
+            Text("SILICA scope", style=ACCENT),
+            Text("a reader for an already-finished sweep - it never runs one", style=DIM),
             Text(""),
             table,
             Text(""),
-            Text("escape or q to close", style="#6b7683"),
+            Text("escape or q to close", style=DIM),
         )
         with VerticalScroll(id="help-box", classes="pane-scroll"):
             yield Static(body)
@@ -78,7 +79,7 @@ class LookupScreen(ModalScreen[int | None]):
         word = bits.parse_word(event.value)
         if word is None:
             self.query_one("#lookup-error", Label).update(
-                Text("not a 32-bit encoding", style="#e0335b")
+                Text("not a 32-bit encoding", style=BAD)
             )
             return
         self.dismiss(word)
@@ -112,7 +113,7 @@ class ShardPrompt(ModalScreen[int | None]):
             shard = value if 0 <= value <= 255 else None
         if shard is None:
             self.query_one("#lookup-error", Label).update(
-                Text("expected 0-255 or a 0x word", style="#e0335b")
+                Text("expected 0-255 or a 0x word", style=BAD)
             )
             return
         self.dismiss(shard)

@@ -61,14 +61,15 @@ class ScopeApp(ListsMixin, CorpusMixin, MapMixin, App[None]):
         Binding("2", "tab('map')", "map", show=False),
         Binding("3", "tab('corpus')", "corpus", show=False),
         Binding("4", "tab('repro')", "reproducers", show=False),
-        Binding("5", "tab('goals')", "goals", show=False),
     ]
 
-    def __init__(self, root: Path, goals_file: Path | None = None) -> None:
+    def __init__(self, root: Path) -> None:
         super().__init__()
+        # static, instant state changes only - no tab-underline slide, no
+        # scroll easing, nothing.
+        self.animation_level = "none"
         self._root = root
-        self._goals_file = goals_file
-        self.session: Session = load(root, goals_file)
+        self.session: Session = load(root)
         self.shard_id = self._default_shard()
         self.filter_index = 0
         self._narrow = False
@@ -96,7 +97,7 @@ class ScopeApp(ListsMixin, CorpusMixin, MapMixin, App[None]):
     # ---------- layout ----------
 
     def compose(self) -> ComposeResult:
-        yield Header(show_clock=False)
+        yield Header(show_clock=False, icon="")
         if not self.session.has_anything:
             yield from self._compose_empty()
             yield Footer()
@@ -122,53 +123,49 @@ class ScopeApp(ListsMixin, CorpusMixin, MapMixin, App[None]):
             with TabPane("reproducers", id="repro"), Horizontal(id="repro-split"):
                 yield ListView(id="repro-list")
                 yield VerticalScroll(Static(id="repro-detail-body"), id="repro-detail")
-            with TabPane("goals", id="goals"), Horizontal(id="goals-split"):
-                yield DataTable(id="goals-table", cursor_type="row")
-                yield VerticalScroll(Static(id="goals-detail-body"), id="goals-detail")
         yield Footer()
 
     def _compose_empty(self) -> ComposeResult:
         root = self.session.root
         names = []
         for presence in self.session.artifacts.presence.values():
-            if presence.key == "goals":
-                continue
             try:
                 names.append(str(presence.path.relative_to(root)))
             except ValueError:
                 names.append(presence.path.name)
         body = Group(
-            Text("no SILICA artifacts here", style="bold #e0a03a"),
+            Text("no SILICA artifacts here", style=f"bold {views.FG}"),
             Text(""),
-            Text("searched under", style="#6b7683"),
-            Text(str(root), style="#c5ced6"),
+            Text("searched under", style=views.DIM),
+            Text(str(root), style=views.FG),
             Text(""),
-            Text("for any of", style="#6b7683"),
-            Text("  " + "   ".join(names), style="#6b7683"),
+            Text("for any of", style=views.DIM),
+            Text("  " + "   ".join(names), style=views.DIM),
             Text(""),
-            Text("point it somewhere real:", style="#c5ced6"),
-            Text("  silica-scope /path/to/silica/artifacts", style="#7fd1b9"),
-            Text("  SILICA_ARTIFACTS=/path/to/artifacts silica-scope", style="#7fd1b9"),
+            Text("point it somewhere real:", style=views.FG),
+            Text("  silica-scope /path/to/silica/artifacts", style=views.ACCENT_COLOR),
+            Text("  SILICA_ARTIFACTS=/path/to/artifacts silica-scope", style=views.ACCENT_COLOR),
             Text(""),
             Text(
                 "a published SILICA checkout ships reproducers/ and result_hash.txt;",
-                style="#6b7683",
+                style=views.DIM,
             ),
             Text(
                 "the bitmaps, shard records and disagreement corpus are regenerated locally.",
-                style="#6b7683",
+                style=views.DIM,
             ),
         )
         with Center(id="empty-state"):
             yield Static(
-                Panel(body, border_style="#e0a03a", padding=(1, 3)), id="empty-inner"
+                Panel(body, border_style=views.DIM, box=views.ASCII_BOX, padding=(1, 3)),
+                id="empty-inner",
             )
 
     FOCUS_TARGET: ClassVar[dict[str, str]] = {
+        "overview": "#overview-body",
         "map": "#spacemap",
         "corpus": "#corpus-table",
         "repro": "#repro-list",
-        "goals": "#goals-table",
     }
 
     @on(TabbedContent.TabActivated)
@@ -209,7 +206,6 @@ class ScopeApp(ListsMixin, CorpusMixin, MapMixin, App[None]):
         # rebuilds the screen's children but does not re-fire App.on_mount.
         self._build_overview()
         self._build_repro_list()
-        self._build_goals()
         self._init_corpus_table()
         self._refresh_map_detail(self.query_one(SpaceMap).cursor)
         self._refresh_map_legend()
@@ -229,12 +225,6 @@ class ScopeApp(ListsMixin, CorpusMixin, MapMixin, App[None]):
         widgets.append(Card("per-tool agreement with the spec oracle", views.tool_table(session)))
         widgets.append(Card("disagreement taxonomy", views.category_table(session)))
         widgets.append(Card("provenance", views.provenance(session)))
-        widgets.append(
-            Card(
-                "goals",
-                Group(views.goals_table(session), views.goals_note()),
-            )
-        )
         widgets.append(Card("artifacts on disk", self._presence_table()))
         body.mount(*widgets)
 
@@ -242,11 +232,15 @@ class ScopeApp(ListsMixin, CorpusMixin, MapMixin, App[None]):
         table = Table.grid(padding=(0, 2))
         table.add_column(width=16, no_wrap=True)
         table.add_column(width=10, no_wrap=True)
-        table.add_column(style="#6b7683", ratio=1)
+        table.add_column(style=views.DIM, ratio=1)
         for presence in self.session.artifacts.presence.values():
-            mark = Text("present", style="#5fbf6a") if presence.present else Text("absent", style="#6b7683")
+            mark = (
+                Text("present", style=views.FG)
+                if presence.present
+                else Text("absent", style=views.DIM)
+            )
             table.add_row(
-                Text(presence.key, style="#c5ced6"),
+                Text(presence.key, style=views.FG),
                 mark,
                 f"{presence.detail}  {presence.path}" if presence.detail else str(presence.path),
             )
@@ -289,7 +283,7 @@ class ScopeApp(ListsMixin, CorpusMixin, MapMixin, App[None]):
         corpus = self.session.corpus
         self.call_from_thread(
             self._corpus_detail,
-            views.word_view(word, None, "looking it up in the corpus…", compact=self._narrow),
+            views.word_view(word, None, "looking it up in the corpus...", compact=self._narrow),
         )
         record = None
         note = "no disagreements/ on disk - cannot say whether this word disagrees"
@@ -321,11 +315,11 @@ class ScopeApp(ListsMixin, CorpusMixin, MapMixin, App[None]):
             self._corpus_detail, views.word_view(word, record, note, compact=self._narrow)
         )
         banner = Text()
-        banner.append("showing ", style="#6b7683")
-        banner.append(f"0x{word:08x}", style="#7fd1b9")
+        banner.append("showing ", style=views.DIM)
+        banner.append(f"0x{word:08x}", style=views.ACCENT_COLOR)
         banner.append(
             " from the word lookup - move in the table to go back to browsing",
-            style="#6b7683",
+            style=views.DIM,
         )
         self.call_from_thread(self._corpus_status, banner)
 
@@ -334,7 +328,7 @@ class ScopeApp(ListsMixin, CorpusMixin, MapMixin, App[None]):
 
     def action_reload(self) -> None:
         had_anything = self.session.has_anything
-        self.session = load(self._root, self._goals_file)
+        self.session = load(self._root)
         if self.session.has_anything != had_anything:
             # crossing empty<->populated changes which screen compose()
             # builds (the empty state has no tabs at all) - swap the whole
@@ -349,12 +343,11 @@ class ScopeApp(ListsMixin, CorpusMixin, MapMixin, App[None]):
                 severity="warning",
             )
             return
-        # every pane, not just the overview: a stale map or goals tab that
+        # every pane, not just the overview: a stale map or corpus tab that
         # contradicts the freshly reloaded overview is worse than no reload.
         self._build_overview()
         self._rebuild_map()
         self._build_repro_list()
-        self._rebuild_goals()
         self.set_shard(self.shard_id)
         self.notify(f"reloaded from {self.session.root}")
 
