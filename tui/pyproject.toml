@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "silica-scope"
+version = "0.1.0"
+description = "Interactive terminal reader for a finished SILICA AArch64 decode sweep"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+authors = [{ name = "Nathan Luevano" }]
+keywords = ["aarch64", "disassembler", "differential-testing", "tui"]
+classifiers = [
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Software Development :: Disassemblers",
+]
+dependencies = [
+  # rich is imported directly throughout views.py and panes/, not only via
+  # textual - declare it rather than lean on a transitive dependency.
+  "rich>=13.0",
+  "textual>=0.80",
+  "zstandard>=0.22",
+  "PyYAML>=6.0",
+]
+
+[project.scripts]
+silica-scope = "silica_scope.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/nluevano/silica"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+silica_scope = ["*.tcss"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
