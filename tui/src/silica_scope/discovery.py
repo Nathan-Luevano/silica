@@ -40,7 +40,6 @@ class Presence:
 @dataclass
 class Artifacts:
     root: Path
-    goals_file: Path | None = None
     presence: dict[str, Presence] = field(default_factory=dict)
 
     def has(self, key: str) -> bool:
@@ -111,7 +110,7 @@ DIR_PATTERNS = {
 }
 
 
-def scan(root: Path, goals_file: Path | None = None) -> Artifacts:
+def scan(root: Path) -> Artifacts:
     presence: dict[str, Presence] = {}
     for key, rel in KNOWN_FILES.items():
         p = root / rel
@@ -129,16 +128,4 @@ def scan(root: Path, goals_file: Path | None = None) -> Artifacts:
         presence[key] = Presence(
             key, p, ok, "dir", _describe_dir(p, DIR_PATTERNS[key]) if ok else ""
         )
-
-    if goals_file is None:
-        for candidate in (root.parent / "GOALS.yml", root / "GOALS.yml"):
-            if candidate.is_file():
-                goals_file = candidate
-                break
-    presence["goals"] = Presence(
-        "goals",
-        goals_file or (root.parent / "GOALS.yml"),
-        goals_file is not None,
-        "file",
-    )
-    return Artifacts(root=root, goals_file=goals_file, presence=presence)
+    return Artifacts(root=root, presence=presence)

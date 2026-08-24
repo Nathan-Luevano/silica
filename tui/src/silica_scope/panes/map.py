@@ -76,9 +76,9 @@ class MapMixin(_Base):
         detail = views.shard_detail(shard, shard_id, self.session, compact=self._narrow)
         smap = self.query_one(SpaceMap)
         channel = Text()
-        channel.append("colour: ", style="#6b7683")
-        channel.append(smap.mode.label, style="#7fd1b9")
-        channel.append(f"  →  {smap.describe(shard_id)}", style="#c5ced6")
+        channel.append("colour: ", style=views.DIM)
+        channel.append(smap.mode.label, style=views.ACCENT_COLOR)
+        channel.append(f"  ->  {smap.describe(shard_id)}", style=views.FG)
         target.update(Group(detail, Text(""), channel))
 
     def _refresh_map_legend(self) -> None:
@@ -88,10 +88,10 @@ class MapMixin(_Base):
             return
         smap = self.query_one(SpaceMap)
         line = Text()
-        line.append("m", style="bold #7fd1b9")
-        line.append(" channel  ", style="#6b7683")
-        line.append(smap.mode.label, style="#c5ced6")
-        legend.update(Group(Text(""), line, Text(smap.mode.caption, style="#6b7683"), smap.legend()))
+        line.append("m", style=views.ACCENT)
+        line.append(" channel  ", style=views.DIM)
+        line.append(smap.mode.label, style=views.FG)
+        legend.update(Group(Text(""), line, Text(smap.mode.caption, style=views.DIM), smap.legend()))
         self._refresh_map_hot()
 
     def _refresh_map_hot(self) -> None:
@@ -105,7 +105,7 @@ class MapMixin(_Base):
             target.update(
                 Group(
                     Text(""),
-                    Text("nothing to rank on this channel", style="#6b7683"),
+                    Text("nothing to rank on this channel", style=views.DIM),
                 )
             )
             return
@@ -114,14 +114,14 @@ class MapMixin(_Base):
         table.add_column(width=21, justify="right", no_wrap=True)
         table.add_column(no_wrap=True)
         for shard_id, _value in ranked:
-            style = "bold #7fd1b9" if shard_id == smap.cursor else "#c5ced6"
+            style = views.ACCENT if shard_id == smap.cursor else views.FG
             table.add_row(
                 Text(f"{shard_id:03d}", style=style),
-                Text(smap.describe(shard_id), style="#8fa3b0"),
-                Text(f"0x{shard_id << 24:08x}", style="#6b7683"),
+                Text(smap.describe(shard_id), style=views.FG),
+                Text(f"0x{shard_id << 24:08x}", style=views.DIM),
             )
         target.update(
-            Group(Text(""), Text(f"hottest shards - {smap.mode.label}", style="#6b7683"), table)
+            Group(Text(""), Text(f"hottest shards - {smap.mode.label}", style=views.DIM), table)
         )
 
     def key_m(self) -> None:
@@ -129,12 +129,21 @@ class MapMixin(_Base):
             return
         self.query_one(SpaceMap).cycle_mode(1)
         self._refresh_map_legend()
+        self._announce_mode()
 
     def key_upper_m(self) -> None:  # textual names shift+m "upper_m"
         if self._active_tab() != "map":
             return
         self.query_one(SpaceMap).cycle_mode(-1)
         self._refresh_map_legend()
+        self._announce_mode()
+
+    def _announce_mode(self) -> None:
+        # the grid itself never moves - m only recolours it by a different
+        # metric, and on a near-monochrome palette that recolouring can be
+        # too subtle to notice at a glance. say what changed out loud.
+        mode = self.query_one(SpaceMap).mode
+        self.notify(f"channel: {mode.label} - {mode.caption}")
 
     def _rebuild_map(self) -> None:
         smap = self.query_one(SpaceMap)
@@ -158,7 +167,7 @@ class MapMixin(_Base):
                 self.notify, f"no bitmaps/ under {self.session.root}", severity="warning"
             )
             return
-        self.call_from_thread(self.notify, "reading 4 x 512 MiB of bitmaps…")
+        self.call_from_thread(self.notify, "reading 4 x 512 MiB of bitmaps...")
         try:
             fractions = exact_disagreement_fractions(root)
         except OSError as exc:

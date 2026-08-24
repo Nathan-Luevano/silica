@@ -19,8 +19,6 @@ class Session:
     shards: list[model.Shard] = field(default_factory=list)
     shard_problems: list[str] = field(default_factory=list)
     reproducers: list[model.Reproducer] = field(default_factory=list)
-    goals: list[model.Goal] = field(default_factory=list)
-    goals_error: str = ""
     corpus: Corpus | None = None
 
     @property
@@ -35,8 +33,7 @@ class Session:
 
     @property
     def has_anything(self) -> bool:
-        # a stray GOALS.yml one directory up is not an artifacts tree.
-        return any(p.present for p in self.artifacts.found if p.key != "goals")
+        return any(p.present for p in self.artifacts.found)
 
     def category_counts(self) -> dict[str, int]:
         if self.g4.ok and isinstance(self.g4.value, dict):
@@ -96,17 +93,14 @@ class Session:
             for p in self.shard_problems[:5]
             if not p.startswith("not found:")
         )
-        if self.goals_error and self.goals_error != "GOALS.yml not found":
-            out.append(f"GOALS.yml: {self.goals_error}")
         for repro in self.reproducers:
             out.extend(f"{repro.path.name}: {p}" for p in repro.problems)
         return out
 
 
-def load(root: Path, goals_file: Path | None = None) -> Session:
-    artifacts = discovery.scan(root, goals_file)
+def load(root: Path) -> Session:
+    artifacts = discovery.scan(root)
     shards, shard_problems = model.load_shards(artifacts.path("shards"))
-    goals, goals_error = model.load_goals(artifacts.goals_file)
     corpus = Corpus(artifacts.path("disagreements"))
     for shard in shards:
         shard.has_corpus = corpus.has_shard(shard.shard_id)
@@ -121,7 +115,5 @@ def load(root: Path, goals_file: Path | None = None) -> Session:
         shards=shards,
         shard_problems=shard_problems,
         reproducers=model.load_reproducers(artifacts.path("reproducers")),
-        goals=goals,
-        goals_error=goals_error,
         corpus=corpus,
     )
