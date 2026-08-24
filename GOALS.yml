@@ -1,43 +1,49 @@
 goals:
-  - id: G1
-    statement: Parse the ARM ISA XML into a decode oracle classifying any 32-bit word as a named instruction form or UNALLOCATED
-    verifier: verify_g1_spec_oracle
-    verifier_file: pysilica/verify/g1_spec_oracle.py
-    verifier_sha256: 9fcf082590eb33c5685bb681ff353b6eab8b9c8bb940fa5fc6ac640f1ca89662
-    status: unverified
-  - id: G2
-    statement: Decode all 2^32 encodings through >=3 independent disassemblers with zero gaps and zero crashes
-    verifier: verify_g2_exhaustive_coverage
-    verifier_file: pysilica/verify/g2_exhaustive_coverage.py
-    verifier_sha256: ed6a8a6afa00779c19190d2c90c9185ac1f3fde8827bebf6158dfbd58825b1e8
-    status: unverified
-  - id: G3
-    statement: Produce a canonical normal form making cross-tool comparison meaningful
-    verifier: verify_g3_normalization
-    verifier_file: pysilica/verify/g3_normalization.py
-    verifier_sha256: 79c8f01dfc8b41952a5ca43702bcc4ae1717315c69ec9fe2d93824869e7ab5d3
-    status: unverified
-  - id: G4
-    statement: Emit a reproducible disagreement corpus, every entry classified into a taxonomy
-    verifier: verify_g4_disagreement_corpus
-    verifier_file: pysilica/verify/g4_disagreement_corpus.py
-    verifier_sha256: c0e932dd78a73eca6266a07594dc77278cae8b04af94e71f5ae837c0f8ae436f
-    status: unverified
-  - id: G5
-    statement: Publish measured per-tool agreement rates against the spec oracle with honest denominators
-    verifier: verify_g5_published_metrics
-    verifier_file: pysilica/verify/g5_published_metrics.py
-    verifier_sha256: 5ab96717e5233a503022e2456dc5f6c9182155367b3e44e1d2a08ee723a91244
-    status: unverified
-  - id: G6
-    statement: Reduce >=10 disagreements to minimal reproducers suitable for filing upstream
-    verifier: verify_g6_reproducers
-    verifier_file: pysilica/verify/g6_reproducers.py
-    verifier_sha256: 64e4c1546e2abad7e308130ee218922867e36623de76e76857c786c837a3f5f0
-    status: unverified
-  - id: G7
-    statement: Full run reproducible from clean checkout by one command, pinned tools, stable result hash
-    verifier: verify_g7_reproducibility
-    verifier_file: pysilica/verify/g7_reproducibility.py
-    verifier_sha256: 7a0ee75f1298e6eec4958da823c85e339ea1027ff7c56313c388b05228e9e17f
-    status: unverified
+- id: G1
+  statement: Parse the ARM ISA XML into a decode oracle classifying any 32-bit word
+    as a named instruction form or UNALLOCATED
+  verifier: verify_g1_spec_oracle
+  verifier_file: pysilica/verify/g1_spec_oracle.py
+  verifier_sha256: 9fcf082590eb33c5685bb681ff353b6eab8b9c8bb940fa5fc6ac640f1ca89662
+  status: passing
+- id: G2
+  statement: Decode all 2^32 encodings through >=3 independent disassemblers with
+    zero gaps and zero crashes
+  verifier: verify_g2_exhaustive_coverage
+  verifier_file: pysilica/verify/g2_exhaustive_coverage.py
+  verifier_sha256: ed6a8a6afa00779c19190d2c90c9185ac1f3fde8827bebf6158dfbd58825b1e8
+  status: passing
+- id: G3
+  statement: Produce a canonical normal form making cross-tool comparison meaningful
+  verifier: verify_g3_normalization
+  verifier_file: pysilica/verify/g3_normalization.py
+  verifier_sha256: 79c8f01dfc8b41952a5ca43702bcc4ae1717315c69ec9fe2d93824869e7ab5d3
+  status: passing
+- id: G4
+  statement: Emit a reproducible disagreement corpus, every entry classified into
+    a taxonomy
+  verifier: verify_g4_disagreement_corpus
+  verifier_file: pysilica/verify/g4_disagreement_corpus.py
+  verifier_sha256: c0e932dd78a73eca6266a07594dc77278cae8b04af94e71f5ae837c0f8ae436f
+  status: passing
+- id: G5
+  statement: Publish measured per-tool agreement rates against the spec oracle with
+    honest denominators
+  verifier: verify_g5_published_metrics
+  verifier_file: pysilica/verify/g5_published_metrics.py
+  verifier_sha256: 5ab96717e5233a503022e2456dc5f6c9182155367b3e44e1d2a08ee723a91244
+  status: passing
+- id: G6
+  statement: Reduce >=10 disagreements to minimal reproducers suitable for filing
+    upstream
+  verifier: verify_g6_reproducers
+  verifier_file: pysilica/verify/g6_reproducers.py
+  verifier_sha256: 64e4c1546e2abad7e308130ee218922867e36623de76e76857c786c837a3f5f0
+  status: passing
+- id: G7
+  statement: Full run reproducible from clean checkout by one command, pinned tools,
+    stable result hash
+  verifier: verify_g7_reproducibility
+  verifier_file: pysilica/verify/g7_reproducibility.py
+  verifier_sha256: 7a0ee75f1298e6eec4958da823c85e339ea1027ff7c56313c388b05228e9e17f
+  status: passing
