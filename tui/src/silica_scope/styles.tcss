@@ -1,0 +1,325 @@
+/* near-monochrome: background/foreground/dim are shades, not hues. the
+   only real colours in the whole app are $accent (interactive/selected)
+   and $bad (real problems only) - see views.py's ACCENT/BAD constants,
+   which use the same two values. */
+
+Screen {
+    background: #0a0a0a;
+    color: #c8c8c8;
+}
+
+Header {
+    background: #121212;
+    color: #c8c8c8;
+}
+
+Footer {
+    background: #121212;
+}
+
+/* textual's built-in command-palette key uses a "vkey" border, which is a
+   unicode eighth-block bar. ascii swaps in a plain "|". */
+FooterKey.-command-palette {
+    border-left: ascii #303030;
+}
+
+Footer > .footer-key--key {
+    background: #1a1a1a;
+    color: #8fd6c4;
+}
+
+TabbedContent Tabs {
+    background: #121212;
+}
+
+Tabs > #tabs-list {
+    background: #121212;
+}
+
+Tab {
+    color: #808080;
+    padding: 0 2;
+}
+
+Tab.-active {
+    color: #8fd6c4;
+    text-style: bold;
+}
+
+Underline > .underline--bar {
+    color: #8fd6c4;
+    background: #1a1a1a;
+}
+
+TabPane {
+    padding: 0 1;
+}
+
+.pane-scroll {
+    scrollbar-size-vertical: 1;
+    scrollbar-background: #121212;
+    scrollbar-color: #303030;
+    scrollbar-color-hover: #454545;
+}
+
+.card {
+    height: auto;
+    max-width: 104;
+    border: ascii #303030;
+    padding: 0 1;
+    margin: 0 0 1 0;
+}
+
+.card > Static {
+    height: auto;
+    width: 1fr;
+}
+
+#overview-body {
+    padding: 1 2 0 2;
+}
+
+#overview-body > Static {
+    height: auto;
+    max-width: 104;
+    margin: 0 0 1 0;
+}
+
+.card-title {
+    color: #808080;
+    text-style: bold;
+}
+
+#map-body {
+    height: 1fr;
+}
+
+#map-left {
+    width: 55;
+    padding: 1 1 0 1;
+    scrollbar-size-vertical: 1;
+}
+
+SpaceMap {
+    width: 51;
+    height: 17;
+}
+
+SpaceMap:focus {
+    /* no border: a focus border on a fixed-size grid shoves every cell one
+       column sideways. the cursor brackets brighten instead. */
+}
+
+#map-side {
+    width: 1fr;
+    border-left: ascii #303030;
+    padding: 1 0 0 2;
+}
+
+#map-legend {
+    height: auto;
+}
+
+#map-hot {
+    height: 1fr;
+}
+
+#corpus-controls {
+    height: auto;
+    padding: 1 0 1 0;
+}
+
+#corpus-status {
+    height: 1;
+    color: #808080;
+}
+
+#corpus-split {
+    height: 1fr;
+}
+
+#corpus-table {
+    width: 3fr;
+    background: #0a0a0a;
+}
+
+#corpus-detail {
+    width: 2fr;
+    border-left: ascii #303030;
+    padding: 0 1 0 2;
+}
+
+DataTable {
+    background: #0a0a0a;
+    scrollbar-size-vertical: 1;
+}
+
+DataTable > .datatable--header {
+    background: #121212;
+    color: #808080;
+    text-style: none;
+}
+
+DataTable > .datatable--cursor {
+    /* background only - forcing a foreground colour here overrode each
+       cell's own semantic colour, so the selected row looked different
+       from every other row instead of just highlighted. */
+    background: #1e2b28;
+}
+
+DataTable > .datatable--hover {
+    background: #161616;
+}
+
+#repro-split {
+    height: 1fr;
+}
+
+#repro-list {
+    width: 40;
+    padding: 1 0 0 0;
+}
+
+#repro-detail {
+    width: 1fr;
+    border-left: ascii #303030;
+    padding: 0 1 0 2;
+}
+
+ListView {
+    background: #0a0a0a;
+    scrollbar-size-vertical: 1;
+}
+
+ListItem {
+    background: #0a0a0a;
+    padding: 0 1;
+    height: 1;
+}
+
+ListItem.--highlight {
+    background: #1a1a1a;
+}
+
+ListView:focus > ListItem.--highlight {
+    background: #1e2b28;
+}
+
+LookupScreen, ShardPrompt, HelpScreen {
+    align: center middle;
+    background: #000000 75%;
+}
+
+#lookup-box {
+    width: 62;
+    height: auto;
+    border: ascii #8fd6c4;
+    background: #121212;
+    padding: 1 2;
+}
+
+#lookup-box Input {
+    background: #0a0a0a;
+    border: ascii #303030;
+}
+
+#lookup-box Input:focus {
+    border: ascii #8fd6c4;
+}
+
+#lookup-hint {
+    color: #808080;
+    padding: 0 0 1 0;
+}
+
+#help-box {
+    width: 78;
+    max-width: 100%;
+    height: auto;
+    max-height: 90%;
+    scrollbar-size-vertical: 1;
+    border: ascii #8fd6c4;
+    background: #121212;
+    padding: 1 2;
+}
+
+#empty-state {
+    align: center middle;
+    height: 1fr;
+}
+
+#empty-inner {
+    width: 78;
+    height: auto;
+}
+
+VerticalScroll, DataTable, ListView {
+    scrollbar-size-vertical: 1;
+    scrollbar-size-horizontal: 1;
+    scrollbar-background: #121212;
+    scrollbar-background-hover: #121212;
+    scrollbar-background-active: #121212;
+    scrollbar-color: #303030;
+    scrollbar-color-hover: #454545;
+    scrollbar-color-active: #8fd6c4;
+}
+
+/* stacked layout for narrow terminals */
+.narrow #corpus-split, .narrow #repro-split {
+    layout: vertical;
+}
+
+.narrow #corpus-table, .narrow #repro-list {
+    width: 1fr;
+    height: 1fr;
+}
+
+.narrow #corpus-detail, .narrow #repro-detail {
+    width: 1fr;
+    height: 1fr;
+    border-left: none;
+    border-top: ascii #303030;
+    padding: 0 1;
+}
+
+/* the map keeps its side-by-side split even when narrow - the cells drop to
+   one column each, which buys back 16 columns for the detail pane. */
+.narrow #map-left {
+    width: 38;
+    padding: 1 0 0 1;
+}
+
+.narrow SpaceMap {
+    width: 35;
+}
+
+.narrow #map-hot {
+    display: none;
+}
+
+.narrow #help-box, .narrow #lookup-box {
+    width: 100%;
+}
+
+/* very small terminals: the map cannot sit beside anything */
+.tiny #map-body {
+    layout: vertical;
+}
+
+.tiny #map-left {
+    width: 1fr;
+    height: 1fr;
+    padding: 0 0 0 1;
+}
+
+.tiny #map-side {
+    width: 1fr;
+    height: 9;
+    border-left: none;
+    border-top: ascii #303030;
+    padding: 0 1;
+}
+
+.tiny #map-legend, .tiny #corpus-controls {
+    height: auto;
+}
