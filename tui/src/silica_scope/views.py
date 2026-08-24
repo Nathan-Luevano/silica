@@ -3,7 +3,7 @@ from __future__ import annotations
 from math import log10
 
 from rich.align import Align
-from rich.box import HEAVY, SIMPLE
+from rich.box import Box
 from rich.console import Group, RenderableType
 from rich.panel import Panel
 from rich.rule import Rule
@@ -13,32 +13,37 @@ from rich.text import Text
 from . import bits
 from .corpus import Record, is_placeholder
 from .fmt import commas, fine_bar, human_bytes, pct, truncate
-from .model import ORACLES, TOTAL_WORDS, Goal, Reproducer, Shard
+from .model import ORACLES, TOTAL_WORDS, Reproducer, Shard
 from .session import Session
 
-ACCENT = "bold #7fd1b9"
-DIM = "#6b7683"
-WARN = "#e0a03a"
+# two colours, used sparingly, plus the two greys that make up the plain
+# foreground/dim value scale. FG/DIM are shades, not hues, so they don't
+# count against the "2-3 colours total" budget - ACCENT and BAD are the
+# whole budget. ACCENT marks anything interactive, selected, or singled
+# out as the reference value (the spec oracle's own row). BAD is reserved
+# for a real problem: a malformed artifact, a crashed shard, a FAILing
+# goal, an actual disagreement with the spec oracle - never for an
+# ordinary "invalid" verdict, which is completely routine data.
+ACCENT_COLOR = "#8fd6c4"
+ACCENT = f"bold {ACCENT_COLOR}"
+FG = "#c8c8c8"
+DIM = "#808080"
 BAD = "#e0335b"
-GOOD = "#5fbf6a"
 
-CATEGORY_STYLE = {
-    "VALIDITY": "#7fae24",
-    "MNEMONIC": "#e0a03a",
-    "OPERAND": "#5aa9e6",
-    "ALIAS": "#b07fd1",
-    "FORMATTING": "#7fd1b9",
-    "NORMALIZATION_UNCERTAIN": "#d4741d",
-    "CRASH": "#e0335b",
-}
+# ascii box: '+', '-', '|' - the same table rules as before, drawn without
+# unicode box-drawing characters. only the header rule differs from an
+# invisible SIMPLE box; everything else is blank, matching the plain,
+# borderless look tables had before.
+SIMPLE_ASCII = Box("    \n    \n -- \n    \n    \n -- \n    \n    \n")
+ASCII_BOX = Box("+--+\n| ||\n|-+|\n| ||\n|-+|\n|-+|\n| ||\n+--+\n")
 
 
 SHORT_CATEGORY = {"NORMALIZATION_UNCERTAIN": "NORM_UNCERTAIN"}
 
 
 def category_text(name: str, short: bool = False) -> Text:
-    label = SHORT_CATEGORY.get(name, name) if short else name
-    return Text(label, style=CATEGORY_STYLE.get(name, "white"))
+    # no per-category colour coding - the label itself is the distinguisher.
+    return Text(SHORT_CATEGORY.get(name, name) if short else name, style=FG)
 
 
 def clean(text: str) -> str:
@@ -56,13 +61,19 @@ def _kv(label: str, value: RenderableType, label_width: int = 22) -> Table:
 
 
 def missing_panel(what: str, path: str, why: str) -> Panel:
+    # a missing artifact is a normal state (a published checkout ships only
+    # reproducers/ and result_hash.txt by design), not a problem - plain,
+    # not red. session.problems() is where a genuinely malformed file gets
+    # flagged, in BAD, via problems_panel below.
     body = Group(
         Text(why, style=DIM),
         Text(""),
         Text("looked for", style=DIM),
-        Text(path, style="italic #8fa3b0"),
+        Text(path, style="italic " + DIM),
     )
-    return Panel(body, title=f"[{WARN}]no {what}[/]", border_style=WARN, box=SIMPLE, padding=(1, 2))
+    return Panel(
+        body, title=f"no {what}", title_align="left", border_style=DIM, box=ASCII_BOX, padding=(1, 2)
+    )
 
 
 def headline(session: Session) -> RenderableType:
@@ -71,32 +82,31 @@ def headline(session: Session) -> RenderableType:
     total_dis = session.g4_int("total_disagreements")
     tiles: list[RenderableType] = []
 
-    def tile(value: str, label: str, style: str, note: str = "") -> Panel:
+    def tile(value: str, label: str, style: str, note: str = "", note_style: str = DIM) -> Panel:
         inner = Group(
             Align.center(Text(value, style=style)),
             Align.center(Text(label, style=DIM)),
-            *([Align.center(Text(note, style=DIM))] if note else []),
+            *([Align.center(Text(note, style=note_style))] if note else []),
         )
-        return Panel(inner, box=SIMPLE, padding=(0, 1), border_style="#2b3138")
+        return Panel(inner, box=SIMPLE_ASCII, padding=(0, 1), border_style="#2a2a2a")
 
     if session.has_sweep_evidence:
-        tiles.append(
-            tile("4,294,967,296", "encodings swept", "bold #7fd1b9", "all 2^32, not sampled")
-        )
+        tiles.append(tile("4,294,967,296", "encodings swept", f"bold {FG}", "all 2^32, not sampled"))
     else:
-        tiles.append(
-            tile("--", "encodings swept", "bold #6b7683", "no sweep artifacts here")
-        )
+        tiles.append(tile("--", "encodings swept", DIM, "no sweep artifacts here"))
     if isinstance(g1_alloc, int) and isinstance(g1_unalloc, int):
         tiles.append(
             tile(
                 commas(g1_alloc),
                 "allocated per spec",
-                "bold #7fae24",
+                f"bold {FG}",
                 f"{pct(g1_alloc / TOTAL_WORDS, 1)} of the space",
             )
         )
     if total_dis is not None:
+        # the one headline number that earns red: it is the count of real
+        # tool-vs-spec disagreements, the actual defects this project exists
+        # to surface, not a UI problem but the substantive finding.
         tiles.append(
             tile(
                 commas(total_dis),
@@ -111,8 +121,9 @@ def headline(session: Session) -> RenderableType:
         tile(
             str(len(readable)),
             "reproducers",
-            "bold #5aa9e6",
+            f"bold {FG}",
             f"{unreadable} unreadable" if unreadable else "minimal, filing-ready",
+            note_style=BAD if unreadable else DIM,
         )
     )
     grid = Table.grid(expand=True)
@@ -130,7 +141,7 @@ def tool_table(session: Session) -> RenderableType:
             session.metrics.error or "report/metrics.json could not be read",
         )
     metrics = session.metrics.value
-    table = Table(box=SIMPLE, expand=True, pad_edge=False, header_style=DIM)
+    table = Table(box=SIMPLE_ASCII, expand=True, pad_edge=False, header_style=DIM)
     table.add_column("", width=2, no_wrap=True)
     table.add_column("tool", style="bold", no_wrap=True)
     table.add_column("agrees", justify="right", no_wrap=True)
@@ -143,15 +154,18 @@ def tool_table(session: Session) -> RenderableType:
         if tool is None:
             continue
         rate = tool.validity_agreement_micro
-        # one absolute 0-100% scale for all three, agreement then the
-        # remainder in red - a rank-relative scale would make an 84% tool
-        # look like it failed and an 88% one look perfect.
-        bar = Text(fine_bar(rate, 26).replace("·", ""), style=GOOD)
-        bar.append("▒" * (26 - len(bar.plain)), style=BAD)
+        # one absolute 0-100% scale for all three, so an 84% tool and an 88%
+        # one are visibly close instead of looking like fail/perfect under a
+        # rank-relative scale. one colour for the filled portion, no
+        # green-to-red gradient - the number carries the precision.
+        width = 26
+        filled = round(rate * width)
+        bar = Text("#" * filled, style=ACCENT)
+        bar.append("-" * (width - filled), style=DIM)
         table.add_row(
             Text(f"{rank}.", style=DIM),
             name,
-            Text(pct(rate), style="#c5ced6"),
+            Text(pct(rate), style=FG),
             bar,
             commas(tool.validity_disagreements),
             Text(pct(tool.text_agreement_micro), style=DIM),
@@ -185,7 +199,7 @@ def category_table(session: Session) -> RenderableType:
         )
     total = sum(counts.values()) or 1
     biggest = max(counts.values()) or 1
-    table = Table(box=SIMPLE, expand=True, pad_edge=False, header_style=DIM)
+    table = Table(box=SIMPLE_ASCII, expand=True, pad_edge=False, header_style=DIM)
     table.add_column("category", no_wrap=True)
     table.add_column("count", justify="right", no_wrap=True)
     table.add_column("share", justify="right", no_wrap=True)
@@ -200,21 +214,22 @@ def category_table(session: Session) -> RenderableType:
             category_text(name),
             commas(count),
             pct(share, 3),
-            Text(fine_bar(scale, 18), style=CATEGORY_STYLE.get(name, "white")),
+            Text(fine_bar(scale, 18), style=ACCENT),
         )
     return Group(table, Text("bar length is log10(count) - the counts span 4 decades", style=DIM))
 
 
 def provenance(session: Session) -> RenderableType:
     rows: list[RenderableType] = []
-    rows.append(_kv("spec release", Text(session.spec_release, style="#8fa3b0")))
+    rows.append(_kv("spec release", Text(session.spec_release, style=FG)))
     if session.result_hash.value:
-        style = "#8fa3b0" if session.result_hash.ok else WARN
+        # a malformed hash means a corrupted artifact - a real problem.
+        style = FG if session.result_hash.ok else BAD
         rows.append(_kv("result hash", Text(str(session.result_hash.value), style=style)))
         if session.result_hash.error:
-            rows.append(_kv("", Text(session.result_hash.error, style=WARN)))
+            rows.append(_kv("", Text(session.result_hash.error, style=BAD)))
     else:
-        rows.append(_kv("result hash", Text(session.result_hash.error or "absent", style=WARN)))
+        rows.append(_kv("result hash", Text(session.result_hash.error or "absent", style=BAD)))
     method = None
     if session.g4.ok and isinstance(session.g4.value, dict):
         method = session.g4.value.get("text_tier_method")
@@ -223,8 +238,11 @@ def provenance(session: Session) -> RenderableType:
             _kv(
                 "validity tier",
                 Text(
+                    # exhaustive is the expected, unremarkable state - plain.
+                    # "NOT exhaustive" would undercut the project's central
+                    # claim, which is a real problem worth flagging.
                     "exhaustive - all 2^32 words" if exhaustive else "NOT exhaustive",
-                    style=GOOD if exhaustive else BAD,
+                    style=FG if exhaustive else BAD,
                 ),
             )
         )
@@ -234,58 +252,16 @@ def provenance(session: Session) -> RenderableType:
             rows.append(
                 _kv(
                     "text tier",
-                    Text(
-                        f"sampled - {commas(size)} of {commas(pop)} ({pct(size / pop, 3)})",
-                        style=WARN,
-                    ),
+                    Text(f"sampled - {commas(size)} of {commas(pop)} ({pct(size / pop, 3)})", style=FG),
                 )
             )
         elif method:
-            rows.append(_kv("text tier", Text(str(method), style="#8fa3b0")))
+            rows.append(_kv("text tier", Text(str(method), style=FG)))
     shards_with = session.g4_int("shards_with_disagreements")
     if shards_with is not None:
-        rows.append(_kv("shards with corpus", Text(f"{shards_with} of 256", style="#8fa3b0")))
-    rows.append(_kv("artifacts root", Text(str(session.root), style="italic #6b7683")))
+        rows.append(_kv("shards with corpus", Text(f"{shards_with} of 256", style=FG)))
+    rows.append(_kv("artifacts root", Text(str(session.root), style="italic " + DIM)))
     return Group(*rows)
-
-
-def goals_table(session: Session) -> RenderableType:
-    if not session.goals:
-        return missing_panel(
-            "goals file",
-            str(session.artifacts.presence["goals"].path),
-            session.goals_error or "GOALS.yml not found next to the artifacts root",
-        )
-    table = Table(box=SIMPLE, expand=True, pad_edge=False, header_style=DIM)
-    table.add_column("goal", style="bold", no_wrap=True)
-    table.add_column("status", no_wrap=True)
-    table.add_column("statement", ratio=1)
-    for goal in session.goals:
-        table.add_row(goal.id, status_text(goal), Text(goal.statement, style="#c5ced6"))
-    return table
-
-
-# what pysilica's verifier actually writes into GOALS.yml is "passing" /
-# "failing"; "unverified" is the pre-run state. anything else is shown
-# verbatim rather than guessed at.
-PASSING = frozenset({"passing", "pass", "passed", "verified"})
-FAILING = frozenset({"failing", "fail", "failed"})
-
-
-def status_text(goal: Goal) -> Text:
-    status = goal.status.strip().lower()
-    if status in PASSING:
-        return Text("PASS", style=f"bold {GOOD}")
-    if status in FAILING:
-        return Text("FAIL", style=f"bold {BAD}")
-    return Text(goal.status or "unknown", style=WARN)
-
-
-def goals_note() -> Text:
-    return Text(
-        "status is written by the verifiers, never by hand - run `silica verify` to refresh",
-        style=DIM,
-    )
 
 
 def shard_detail(
@@ -295,18 +271,22 @@ def shard_detail(
         return Group(
             Text(f"shard {shard_id:03d}", style=ACCENT),
             Text(""),
-            Text("no shard record on disk", style=WARN),
+            Text("no shard record on disk", style=BAD),
             Text(str(session.artifacts.path("shards") / f"{shard_id:03d}.json"), style=DIM),
         )
     start, end = shard.start, shard.end
     label_w = 11 if compact else 14
     rows: list[RenderableType] = [
         Text(f"shard {shard.label}", style=ACCENT),
-        _kv("words", Text(f"0x{start:08x}..0x{end - 1:08x}", style="#8fa3b0"), label_w),
+        _kv("words", Text(f"0x{start:08x}..0x{end - 1:08x}", style=FG), label_w),
         _kv(
-            "status", Text(shard.status, style=GOOD if shard.status == "complete" else BAD), label_w
+            "status",
+            # "complete" is the expected, unremarkable state - plain; only a
+            # non-complete shard (crashed, incomplete) is worth flagging red.
+            Text(shard.status, style=FG if shard.status == "complete" else BAD),
+            label_w,
         ),
-        _kv("sweep time", Text(_ms(shard.duration_ms), style="#8fa3b0"), label_w),
+        _kv("sweep time", Text(_ms(shard.duration_ms), style=FG), label_w),
         _kv(
             "crashes",
             Text(
@@ -316,7 +296,7 @@ def shard_detail(
             label_w,
         ),
     ]
-    table = Table(box=SIMPLE, expand=True, pad_edge=False, header_style=DIM)
+    table = Table(box=SIMPLE_ASCII, expand=True, pad_edge=False, header_style=DIM)
     table.add_column("oracle", width=8, no_wrap=True)
     table.add_column("valid", justify="right", no_wrap=True)
     table.add_column("", justify="right", width=7, no_wrap=True)
@@ -328,16 +308,14 @@ def shard_detail(
             table.add_row(oracle, Text("-", style=DIM), "", *([] if compact else [""]))
             continue
         frac = count / shard.size
-        style = ACCENT if oracle == "spec" else "#c5ced6"
+        style = ACCENT if oracle == "spec" else FG
         cells: list[RenderableType] = [
             Text(oracle, style=style),
             commas(count),
             Text(pct(frac, 1), style=DIM),
         ]
         if not compact:
-            cells.append(
-                Text(fine_bar(frac, 16), style="#5aa9e6" if oracle != "spec" else "#7fd1b9")
-            )
+            cells.append(Text(fine_bar(frac, 16), style=ACCENT))
         table.add_row(*cells)
     rows.append(Text(""))
     rows.append(table)
@@ -348,7 +326,7 @@ def shard_detail(
                 human_bytes(shard.disagreement_bytes) + " compressed"
                 if shard.has_corpus
                 else "no disagreements recorded",
-                style="#8fa3b0" if shard.has_corpus else DIM,
+                style=FG if shard.has_corpus else DIM,
             ),
             label_w,
         )
@@ -356,7 +334,7 @@ def shard_detail(
     rows.append(
         _kv(
             "content hash",
-            Text(shard.content_hash[: 16 if compact else 32] + "…", style=DIM),
+            Text(shard.content_hash[: 16 if compact else 32] + "...", style=DIM),
             label_w,
         )
     )
@@ -379,13 +357,13 @@ def word_view(
     head = Table.grid(padding=(0, 2))
     head.add_column(no_wrap=True)
     head.add_column(no_wrap=True)
-    head.add_row(Text(bits.hex_word(word), style="bold #7fd1b9"), Text(bits.group_of(word), style=DIM))
+    head.add_row(Text(bits.hex_word(word), style=ACCENT), Text(bits.group_of(word), style=DIM))
     body: list[RenderableType] = [
         head,
-        Text(grouped, style="#c5ced6"),
+        Text(grouped, style=FG),
         Text(ruler, style=DIM),
-        _kv("little-endian", Text(bits.bytes_le(word), style="#8fa3b0"), 14),
-        _kv("shard", Text(f"{word >> 24:03d}", style="#8fa3b0"), 14),
+        _kv("little-endian", Text(bits.bytes_le(word), style=FG), 14),
+        _kv("shard", Text(f"{word >> 24:03d}", style=FG), 14),
     ]
     if record is None:
         body.append(Text(""))
@@ -393,7 +371,7 @@ def word_view(
             body.append(Text(line, style=DIM))
         return Group(*body)
     body.append(_kv("category", category_text(record.category), 14))
-    table = Table(box=SIMPLE, expand=True, pad_edge=False, header_style=DIM)
+    table = Table(box=SIMPLE_ASCII, expand=True, pad_edge=False, header_style=DIM)
     table.add_column("oracle", width=8, no_wrap=True)
     table.add_column("valid", width=6, no_wrap=True)
     table.add_column("text", ratio=1, overflow="fold" if compact else "ellipsis")
@@ -405,21 +383,23 @@ def word_view(
         if valid is None:
             valid_cell = Text("?", style=DIM)
         else:
-            valid_cell = Text("valid" if valid else "reject", style=GOOD if valid else BAD)
+            # "valid" and "reject" are both ordinary data - most of the
+            # space is legitimately UNALLOCATED - so neither gets colour.
+            valid_cell = Text("valid" if valid else "reject", style=FG)
         if is_placeholder(text):
             rendered = Text("valid, no text captured" if valid else "-", style=DIM)
         else:
-            rendered = Text(text or "-", style="#c5ced6")
+            rendered = Text(text or "-", style=FG)
             if oracle != "spec" and text and spec_text and text != spec_text:
-                rendered = Text(text, style=WARN)
+                rendered = Text(text, style=BAD)
         table.add_row(
-            Text(oracle, style=ACCENT if oracle == "spec" else "#c5ced6"), valid_cell, rendered
+            Text(oracle, style=ACCENT if oracle == "spec" else FG), valid_cell, rendered
         )
     body.append(Text(""))
     body.append(table)
     validity_diff = record.validity_disagreements()
     if validity_diff:
-        body.append(Text("validity differs from spec: " + ", ".join(validity_diff), style=WARN))
+        body.append(Text("validity differs from spec: " + ", ".join(validity_diff), style=BAD))
     elif spec_text:
         # deliberately not a list of "tools whose text differs": the spec
         # oracle emits a bare mnemonic, so a raw string compare marks every
@@ -437,23 +417,25 @@ def word_view(
 def reproducer_detail(repro: Reproducer) -> RenderableType:
     rows: list[RenderableType] = [
         Text(repro.path.name, style=ACCENT),
-        _kv("word", Text(repro.word, style="bold #7fd1b9"), 12),
+        _kv("word", Text(repro.word, style=ACCENT), 12),
         _kv("category", category_text(repro.category), 12),
-        _kv("tool", Text(repro.tool, style="#5aa9e6"), 12),
+        _kv("tool", Text(repro.tool, style=FG), 12),
         Text(""),
-        _kv("spec says", Text(repro.spec or "-", style=GOOD), 12),
+        # spec is the reference, plain; the tool's line is the one being
+        # filed as wrong, so it is the one that earns red.
+        _kv("spec says", Text(repro.spec or "-", style=FG), 12),
         _kv("tool says", Text(repro.actual or "-", style=BAD), 12),
     ]
     word = repro.word_int
     if word is not None:
         grouped, ruler = bits.bit_rows(word)
-        rows.extend([Text(""), Text(grouped, style="#c5ced6"), Text(ruler, style=DIM)])
+        rows.extend([Text(""), Text(grouped, style=FG), Text(ruler, style=DIM)])
     if repro.problems:
         rows.append(Text(""))
         for problem in repro.problems:
             rows.append(Text("! " + problem, style=BAD))
     if repro.body:
-        rows.extend([Text(""), Rule(style="#2b3138"), Text(repro.body, style="#c5ced6")])
+        rows.extend([Text(""), Rule(style="#2a2a2a", characters="-"), Text(repro.body, style=FG)])
     return Group(*rows)
 
 
@@ -461,6 +443,6 @@ def problems_panel(session: Session) -> RenderableType | None:
     problems = session.problems()
     if not problems:
         return None
-    body = Group(*[Text("• " + truncate(p, 200), style=WARN) for p in problems[:8]])
-    title = f"[{WARN}]{len(problems)} artifact problem{'s' if len(problems) != 1 else ''}[/]"
-    return Panel(body, title=title, border_style=WARN, box=HEAVY, padding=(0, 1))
+    body = Group(*[Text("- " + truncate(p, 200), style=BAD) for p in problems[:8]])
+    title = f"[{BAD}]{len(problems)} artifact problem{'s' if len(problems) != 1 else ''}[/]"
+    return Panel(body, title=title, title_align="left", border_style=BAD, box=ASCII_BOX, padding=(0, 1))
