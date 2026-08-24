@@ -28,7 +28,6 @@ def test_scan_reports_presence(full_artifacts: Path) -> None:
     assert found.has("metrics")
     assert found.has("reproducers")
     assert not found.has("bitmaps")
-    assert found.goals_file is not None
 
 
 def test_metrics_parse(full_artifacts: Path) -> None:
@@ -83,14 +82,6 @@ def test_reproducer_flags_its_own_defects(corrupt_artifacts: Path) -> None:
     assert "taxonomy" in joined
     assert "not one of" in joined
     assert "not a disagreement" in joined
-
-
-def test_goals_load(full_artifacts: Path) -> None:
-    goals, error = model.load_goals(full_artifacts.parent / "GOALS.yml")
-    assert error == ""
-    assert goals[0].id == "G1"
-    assert goals[0].status == "pass"
-    assert goals[0].verifier_sha256
 
 
 def test_session_problem_list_ignores_absent_files(published_artifacts: Path) -> None:
@@ -292,23 +283,11 @@ def test_sweep_evidence_needs_more_than_one_surviving_shard(full_artifacts: Path
 
 
 def test_a_stray_goals_file_is_not_an_artifacts_tree(tmp_path: Path) -> None:
+    # GOALS.yml is SILICA's own build-process tracking, unrelated to what
+    # silica-scope reads - scope never looks at it, so a stray copy sitting
+    # next to an empty artifacts/ dir must not count as "there's data here".
     from silica_scope import session as session_mod
 
     (tmp_path / "GOALS.yml").write_text("goals: []\n")
     loaded = session_mod.load(tmp_path / "artifacts")
     assert not loaded.has_anything
-
-
-def test_goal_status_words_the_verifier_actually_writes() -> None:
-    from silica_scope.views import status_text
-
-    def status_of(word: str) -> str:
-        return status_text(
-            model.Goal(id="G1", statement="", verifier="", verifier_file="", status=word)
-        ).plain
-
-    # pysilica writes "passing"/"failing", not "pass"/"fail"
-    assert status_of("passing") == "PASS"
-    assert status_of("failing") == "FAIL"
-    assert status_of("unverified") == "unverified"
-    assert status_of("something-new") == "something-new"

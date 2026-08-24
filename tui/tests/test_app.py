@@ -33,7 +33,7 @@ def screen_text(app: ScopeApp) -> str:
 
 @pytest.mark.asyncio
 async def test_every_pane_renders_against_real_shaped_artifacts(full_artifacts: Path) -> None:
-    app = ScopeApp(full_artifacts, full_artifacts.parent / "GOALS.yml")
+    app = ScopeApp(full_artifacts)
     async with app.run_test(size=(140, 40)) as pilot:
         await settle(pilot, lambda: "capstone" in screen_text(app))
         text = screen_text(app)
@@ -42,7 +42,6 @@ async def test_every_pane_renders_against_real_shaped_artifacts(full_artifacts: 
         for key, marker in (
             ("2", "shard 000"),
             ("4", "0x109b485a"),
-            ("5", "Parse the ARM ISA XML"),
         ):
             await pilot.press(key)
             await pilot.pause()
@@ -51,7 +50,7 @@ async def test_every_pane_renders_against_real_shaped_artifacts(full_artifacts: 
 
 @pytest.mark.asyncio
 async def test_corpus_pane_streams_records(full_artifacts: Path) -> None:
-    app = ScopeApp(full_artifacts, None)
+    app = ScopeApp(full_artifacts)
     async with app.run_test(size=(140, 40)) as pilot:
         await pilot.press("3")
         await settle(pilot, lambda: len(app.records) == 3)
@@ -61,7 +60,7 @@ async def test_corpus_pane_streams_records(full_artifacts: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_filter_cycles_and_narrows(full_artifacts: Path) -> None:
-    app = ScopeApp(full_artifacts, None)
+    app = ScopeApp(full_artifacts)
     async with app.run_test(size=(140, 40)) as pilot:
         await pilot.press("3")
         await settle(pilot, lambda: len(app.records) == 3)
@@ -73,7 +72,7 @@ async def test_filter_cycles_and_narrows(full_artifacts: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_map_cursor_moves_and_updates_detail(full_artifacts: Path) -> None:
-    app = ScopeApp(full_artifacts, None)
+    app = ScopeApp(full_artifacts)
     async with app.run_test(size=(140, 40)) as pilot:
         await pilot.press("2")
         await pilot.pause()
@@ -92,7 +91,7 @@ async def test_map_cursor_moves_and_updates_detail(full_artifacts: Path) -> None
 
 @pytest.mark.asyncio
 async def test_map_cursor_stays_in_bounds(full_artifacts: Path) -> None:
-    app = ScopeApp(full_artifacts, None)
+    app = ScopeApp(full_artifacts)
     async with app.run_test(size=(140, 40)) as pilot:
         await pilot.press("2")
         await pilot.pause()
@@ -114,7 +113,7 @@ async def test_map_cursor_stays_in_bounds(full_artifacts: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_map_channel_cycles(full_artifacts: Path) -> None:
-    app = ScopeApp(full_artifacts, None)
+    app = ScopeApp(full_artifacts)
     async with app.run_test(size=(140, 40)) as pilot:
         await pilot.press("2")
         await pilot.pause()
@@ -126,7 +125,7 @@ async def test_map_channel_cycles(full_artifacts: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_word_lookup_finds_and_misses(full_artifacts: Path) -> None:
-    app = ScopeApp(full_artifacts, None)
+    app = ScopeApp(full_artifacts)
     async with app.run_test(size=(140, 40)) as pilot:
         await pilot.press("slash")
         await pilot.pause()
@@ -141,7 +140,7 @@ async def test_word_lookup_finds_and_misses(full_artifacts: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_word_lookup_says_so_when_a_shard_has_no_corpus(full_artifacts: Path) -> None:
-    app = ScopeApp(full_artifacts, None)
+    app = ScopeApp(full_artifacts)
     async with app.run_test(size=(140, 40)) as pilot:
         await pilot.press("slash")
         await pilot.pause()
@@ -154,7 +153,7 @@ async def test_word_lookup_says_so_when_a_shard_has_no_corpus(full_artifacts: Pa
 
 @pytest.mark.asyncio
 async def test_bad_word_is_rejected_without_closing_the_prompt(full_artifacts: Path) -> None:
-    app = ScopeApp(full_artifacts, None)
+    app = ScopeApp(full_artifacts)
     async with app.run_test(size=(140, 40)) as pilot:
         await pilot.press("slash")
         await pilot.pause()
@@ -167,7 +166,7 @@ async def test_bad_word_is_rejected_without_closing_the_prompt(full_artifacts: P
 
 @pytest.mark.asyncio
 async def test_help_opens_and_closes(full_artifacts: Path) -> None:
-    app = ScopeApp(full_artifacts, None)
+    app = ScopeApp(full_artifacts)
     async with app.run_test(size=(140, 40)) as pilot:
         await pilot.press("question_mark")
         await pilot.pause()
@@ -182,7 +181,7 @@ async def test_empty_state_explains_itself_and_survives_pane_keys(tmp_path: Path
     app = ScopeApp(tmp_path / "nothing-here")
     async with app.run_test(size=(100, 30)) as pilot:
         assert "no SILICA artifacts here" in screen_text(app)
-        for key in ("1", "2", "3", "4", "5", "m", "f", "s", "n", "i", "x", "slash"):
+        for key in ("1", "2", "3", "4", "m", "f", "s", "n", "i", "x", "slash"):
             await pilot.press(key)
             await pilot.pause()
         assert app.is_running
@@ -217,7 +216,7 @@ async def test_corrupt_artifacts_report_rather_than_crash(corrupt_artifacts: Pat
 
 @pytest.mark.asyncio
 async def test_narrow_layout_switches_and_switches_back(full_artifacts: Path) -> None:
-    app = ScopeApp(full_artifacts, None)
+    app = ScopeApp(full_artifacts)
     async with app.run_test(size=(140, 40)) as pilot:
         assert not app.screen.has_class("narrow")
         assert not app.query_one(SpaceMap).compact
@@ -233,7 +232,7 @@ async def test_narrow_layout_switches_and_switches_back(full_artifacts: Path) ->
 
 @pytest.mark.asyncio
 async def test_tab_activation_focuses_the_pane(full_artifacts: Path) -> None:
-    app = ScopeApp(full_artifacts, None)
+    app = ScopeApp(full_artifacts)
     async with app.run_test(size=(140, 40)) as pilot:
         await pilot.press("2")
         await pilot.pause()
@@ -241,14 +240,14 @@ async def test_tab_activation_focuses_the_pane(full_artifacts: Path) -> None:
         await pilot.press("4")
         await pilot.pause()
         assert isinstance(app.focused, ListView)
-        await pilot.press("5")
+        await pilot.press("3")
         await pilot.pause()
         assert isinstance(app.focused, DataTable)
 
 
 @pytest.mark.asyncio
 async def test_enter_on_the_map_opens_that_shard_in_the_corpus(full_artifacts: Path) -> None:
-    app = ScopeApp(full_artifacts, None)
+    app = ScopeApp(full_artifacts)
     async with app.run_test(size=(140, 40)) as pilot:
         await pilot.press("2")
         await pilot.pause()
@@ -260,7 +259,7 @@ async def test_enter_on_the_map_opens_that_shard_in_the_corpus(full_artifacts: P
 
 @pytest.mark.asyncio
 async def test_reproducer_detail_follows_the_selection(full_artifacts: Path) -> None:
-    app = ScopeApp(full_artifacts, None)
+    app = ScopeApp(full_artifacts)
     async with app.run_test(size=(140, 40)) as pilot:
         await pilot.press("4")
         await settle(pilot, lambda: "1 of 1" in screen_text(app))
@@ -270,7 +269,7 @@ async def test_reproducer_detail_follows_the_selection(full_artifacts: Path) -> 
 
 @pytest.mark.asyncio
 async def test_reload_does_not_lose_the_screen(full_artifacts: Path) -> None:
-    app = ScopeApp(full_artifacts, None)
+    app = ScopeApp(full_artifacts)
     async with app.run_test(size=(140, 40)) as pilot:
         await pilot.press("r")
         await settle(pilot, lambda: "encodings swept" in screen_text(app))
@@ -323,7 +322,7 @@ async def test_moving_the_corpus_cursor_updates_the_detail(full_artifacts: Path)
     # exercises an @on handler that lives on a pane mixin: textual only
     # collects decorated handlers from a class body, so a mixin's handlers
     # are silently dead unless they are registered explicitly.
-    app = ScopeApp(full_artifacts, None)
+    app = ScopeApp(full_artifacts)
     async with app.run_test(size=(140, 40)) as pilot:
         await pilot.press("3")
         await settle(pilot, lambda: len(app.records) == 3)
@@ -337,15 +336,6 @@ async def test_moving_the_corpus_cursor_updates_the_detail(full_artifacts: Path)
 
 
 @pytest.mark.asyncio
-async def test_moving_the_goal_cursor_updates_the_detail(full_artifacts: Path) -> None:
-    app = ScopeApp(full_artifacts, full_artifacts.parent / "GOALS.yml")
-    async with app.run_test(size=(140, 40)) as pilot:
-        await pilot.press("5")
-        await settle(pilot, lambda: "artifacts this goal produces" in screen_text(app))
-        assert "g1_metrics" in screen_text(app)
-
-
-@pytest.mark.asyncio
 async def test_exact_channel_reads_the_bitmaps(full_artifacts: Path) -> None:
     # four tiny bitmaps covering one shard: spec all-zero, capstone all-ones,
     # so the exact channel must land on 1.0 for shard 0.
@@ -356,7 +346,7 @@ async def test_exact_channel_reads_the_bitmaps(full_artifacts: Path) -> None:
     (bitmaps / "capstone.bin").write_bytes(b"\xff" * shard_bytes)
     (bitmaps / "llvm.bin").write_bytes(b"\x00" * shard_bytes)
     (bitmaps / "unicorn.bin").write_bytes(b"\x00" * shard_bytes)
-    app = ScopeApp(full_artifacts, None)
+    app = ScopeApp(full_artifacts)
     async with app.run_test(size=(140, 40)) as pilot:
         await pilot.press("2")
         await pilot.pause()
@@ -368,7 +358,7 @@ async def test_exact_channel_reads_the_bitmaps(full_artifacts: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_exact_channel_says_so_when_there_are_no_bitmaps(full_artifacts: Path) -> None:
-    app = ScopeApp(full_artifacts, None)
+    app = ScopeApp(full_artifacts)
     async with app.run_test(size=(140, 40)) as pilot:
         await pilot.press("2")
         await pilot.pause()
@@ -403,17 +393,14 @@ async def test_reload_refreshes_every_pane_not_just_the_overview(
     live.mkdir(parents=True)
     shutil.copytree(full_artifacts / "reproducers", live / "reproducers")
     (live / "result_hash.txt").write_text("c" * 64)
-    app = ScopeApp(live, tmp_path / "live" / "GOALS.yml")
+    app = ScopeApp(live)
     async with app.run_test(size=(140, 40)) as pilot:
-        await pilot.press("5")
-        await settle(pilot, lambda: "no goals file" in screen_text(app))
+        await pilot.press("2")
+        await settle(pilot, lambda: "shard 000" in screen_text(app))
+        assert "no shard record on disk" in screen_text(app)
         # the tree grows real artifacts underneath a running reader
         shutil.copytree(full_artifacts / "sweep", live / "sweep")
-        shutil.copy(full_artifacts.parent / "GOALS.yml", tmp_path / "live" / "GOALS.yml")
         await pilot.press("r")
-        await settle(pilot, lambda: "no goals file" not in screen_text(app))
-        assert "Parse the ARM ISA XML" in screen_text(app)
-        await pilot.press("2")
         await settle(pilot, lambda: "no shard record on disk" not in screen_text(app))
         text = screen_text(app)
         assert "shard 000" in text
@@ -428,7 +415,7 @@ async def test_unreadable_corpus_directory_does_not_stop_startup(
 
     os.chmod(full_artifacts / "disagreements", 0o000)
     try:
-        app = ScopeApp(full_artifacts, None)
+        app = ScopeApp(full_artifacts)
         async with app.run_test(size=(140, 40)) as pilot:
             await pilot.press("3")
             await settle(pilot, lambda: "nothing to browse" in screen_text(app))
@@ -439,7 +426,7 @@ async def test_unreadable_corpus_directory_does_not_stop_startup(
 
 @pytest.mark.asyncio
 async def test_escape_cancels_a_running_scan(full_artifacts: Path) -> None:
-    app = ScopeApp(full_artifacts, None)
+    app = ScopeApp(full_artifacts)
     async with app.run_test(size=(140, 40)) as pilot:
         await pilot.press("3")
         await settle(pilot, lambda: len(app.records) == 3)
@@ -454,7 +441,7 @@ async def test_escape_cancels_a_running_scan(full_artifacts: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_shift_m_cycles_the_channel_backwards(full_artifacts: Path) -> None:
-    app = ScopeApp(full_artifacts, None)
+    app = ScopeApp(full_artifacts)
     async with app.run_test(size=(140, 40)) as pilot:
         await pilot.press("2")
         await pilot.pause()
@@ -472,7 +459,7 @@ async def test_shift_m_cycles_the_channel_backwards(full_artifacts: Path) -> Non
 async def test_every_key_the_help_screen_documents_is_bound(full_artifacts: Path) -> None:
     # the help screen used to promise `escape` cancels a scan and `M` cycles
     # backwards; neither had a handler.
-    app = ScopeApp(full_artifacts, None)
+    app = ScopeApp(full_artifacts)
     async with app.run_test(size=(140, 40)) as pilot:
         await pilot.press("question_mark")
         await settle(pilot, lambda: "SILICA scope" in screen_text(app))
@@ -488,7 +475,7 @@ async def test_every_key_the_help_screen_documents_is_bound(full_artifacts: Path
 
 @pytest.mark.asyncio
 async def test_lookup_miss_does_not_claim_text_agreement(full_artifacts: Path) -> None:
-    app = ScopeApp(full_artifacts, None)
+    app = ScopeApp(full_artifacts)
     async with app.run_test(size=(140, 40)) as pilot:
         await pilot.press("slash")
         await pilot.pause()
@@ -507,7 +494,7 @@ async def test_short_terminal_can_still_reach_every_shard(full_artifacts: Path) 
     # a short terminal rows c-f of the shard space were unreachable.
     from textual.containers import VerticalScroll
 
-    app = ScopeApp(full_artifacts, None)
+    app = ScopeApp(full_artifacts)
     async with app.run_test(size=(60, 18)) as pilot:
         await pilot.press("2")
         await pilot.pause()

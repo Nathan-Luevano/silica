@@ -25,9 +25,8 @@ SCRIPT: list[tuple[str, list[str], float]] = [
     ("04-corpus", ["3"], 2.5),
     ("05-corpus-filter", ["f"], 2.5),
     ("06-repro", ["4"], 0.4),
-    ("07-goals", ["5"], 0.4),
-    ("08-help", ["question_mark"], 0.4),
-    ("09-lookup", ["escape", "slash"], 0.4),
+    ("07-help", ["question_mark"], 0.4),
+    ("08-lookup", ["escape", "slash"], 0.4),
 ]
 
 

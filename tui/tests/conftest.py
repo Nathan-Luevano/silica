@@ -96,17 +96,6 @@ def full_artifacts(tmp_path: Path) -> Path:
         "\n"
         "Some prose about the disagreement.\n",
     )
-    _write(
-        tmp_path / "GOALS.yml",
-        "goals:\n"
-        "  - id: G1\n"
-        "    statement: Parse the ARM ISA XML\n"
-        "    verifier: verify_g1_spec_oracle\n"
-        "    verifier_file: pysilica/verify/g1_spec_oracle.py\n"
-        "    verifier_sha256: " + "9" * 64 + "\n"
-        "    status: pass\n",
-    )
-
     import zstandard
 
     records = [
