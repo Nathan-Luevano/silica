@@ -289,60 +289,6 @@ def load_reproducers(directory: Path) -> list[Reproducer]:
     return [parse_reproducer(p) for p in sorted(directory.glob("*.md"))]
 
 
-# which published artifacts each goal's own output lands in. this is a map
-# for cross-referencing what is on disk, not a claim that anything here was
-# verified - only `silica verify` writes status.
-GOAL_ARTIFACTS: dict[str, tuple[str, ...]] = {
-    "G1": ("g1_metrics",),
-    "G2": ("shards", "bitmaps"),
-    "G3": ("normalization", "spec_aliases"),
-    "G4": ("g4_metrics", "disagreements"),
-    "G5": ("metrics",),
-    "G6": ("reproducers",),
-    "G7": ("result_hash",),
-}
-
-
-@dataclass
-class Goal:
-    id: str
-    statement: str
-    verifier: str
-    verifier_file: str
-    status: str
-    verifier_sha256: str = ""
-
-
-def load_goals(path: Path | None) -> tuple[list[Goal], str]:
-    if path is None or not path.is_file():
-        return [], "GOALS.yml not found"
-    try:
-        import yaml
-    except ImportError:  # pragma: no cover - PyYAML is a hard dependency
-        return [], "PyYAML not installed"
-    try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except (OSError, Exception) as exc:  # noqa: BLE001 - yaml raises many types
-        return [], f"unreadable: {exc}"
-    if not isinstance(data, dict) or not isinstance(data.get("goals"), list):
-        return [], "expected a top-level 'goals:' list"
-    goals: list[Goal] = []
-    for entry in data["goals"]:
-        if not isinstance(entry, dict):
-            continue
-        goals.append(
-            Goal(
-                id=str(entry.get("id", "?")),
-                statement=str(entry.get("statement", "")),
-                verifier=str(entry.get("verifier", "")),
-                verifier_file=str(entry.get("verifier_file", "")),
-                status=str(entry.get("status", "unknown")),
-                verifier_sha256=str(entry.get("verifier_sha256", "")),
-            )
-        )
-    return goals, ""
-
-
 def load_flat_json(path: Path) -> Loaded:
     return _read_json(path)
 
