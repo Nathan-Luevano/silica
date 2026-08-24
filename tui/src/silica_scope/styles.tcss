@@ -1,43 +1,54 @@
+/* near-monochrome: background/foreground/dim are shades, not hues. the
+   only real colours in the whole app are $accent (interactive/selected)
+   and $bad (real problems only) - see views.py's ACCENT/BAD constants,
+   which use the same two values. */
+
 Screen {
-    background: #0d1117;
-    color: #c5ced6;
+    background: #0a0a0a;
+    color: #c8c8c8;
 }
 
 Header {
-    background: #12161c;
-    color: #7fd1b9;
+    background: #121212;
+    color: #c8c8c8;
 }
 
 Footer {
-    background: #12161c;
+    background: #121212;
+}
+
+/* textual's built-in command-palette key uses a "vkey" border, which is a
+   unicode eighth-block bar. ascii swaps in a plain "|". */
+FooterKey.-command-palette {
+    border-left: ascii #303030;
 }
 
 Footer > .footer-key--key {
-    background: #1c2229;
-    color: #7fd1b9;
+    background: #1a1a1a;
+    color: #8fd6c4;
 }
 
 TabbedContent Tabs {
-    background: #12161c;
+    background: #121212;
 }
 
 Tabs > #tabs-list {
-    background: #12161c;
+    background: #121212;
 }
 
 Tab {
-    color: #6b7683;
+    color: #808080;
     padding: 0 2;
 }
 
 Tab.-active {
-    color: #7fd1b9;
+    color: #8fd6c4;
     text-style: bold;
 }
 
 Underline > .underline--bar {
-    color: #7fd1b9;
-    background: #1c2229;
+    color: #8fd6c4;
+    background: #1a1a1a;
 }
 
 TabPane {
@@ -46,15 +57,15 @@ TabPane {
 
 .pane-scroll {
     scrollbar-size-vertical: 1;
-    scrollbar-background: #12161c;
-    scrollbar-color: #2b3138;
-    scrollbar-color-hover: #3d4650;
+    scrollbar-background: #121212;
+    scrollbar-color: #303030;
+    scrollbar-color-hover: #454545;
 }
 
 .card {
     height: auto;
     max-width: 104;
-    border: round #232a32;
+    border: ascii #303030;
     padding: 0 1;
     margin: 0 0 1 0;
 }
@@ -75,7 +86,7 @@ TabPane {
 }
 
 .card-title {
-    color: #6b7683;
+    color: #808080;
     text-style: bold;
 }
 
@@ -101,7 +112,7 @@ SpaceMap:focus {
 
 #map-side {
     width: 1fr;
-    border-left: solid #232a32;
+    border-left: ascii #303030;
     padding: 1 0 0 2;
 }
 
@@ -115,12 +126,12 @@ SpaceMap:focus {
 
 #corpus-controls {
     height: auto;
-    padding: 0 0 1 0;
+    padding: 1 0 1 0;
 }
 
 #corpus-status {
     height: 1;
-    color: #6b7683;
+    color: #808080;
 }
 
 #corpus-split {
@@ -129,36 +140,38 @@ SpaceMap:focus {
 
 #corpus-table {
     width: 3fr;
-    background: #0d1117;
+    background: #0a0a0a;
 }
 
 #corpus-detail {
     width: 2fr;
-    border-left: solid #232a32;
+    border-left: ascii #303030;
     padding: 0 1 0 2;
 }
 
 DataTable {
-    background: #0d1117;
+    background: #0a0a0a;
     scrollbar-size-vertical: 1;
 }
 
 DataTable > .datatable--header {
-    background: #12161c;
-    color: #6b7683;
+    background: #121212;
+    color: #808080;
     text-style: none;
 }
 
 DataTable > .datatable--cursor {
-    background: #1f2b33;
-    color: #ffffff;
+    /* background only - forcing a foreground colour here overrode each
+       cell's own semantic colour, so the selected row looked different
+       from every other row instead of just highlighted. */
+    background: #1e2b28;
 }
 
 DataTable > .datatable--hover {
-    background: #161c22;
+    background: #161616;
 }
 
-#repro-split, #goals-split {
+#repro-split {
     height: 1fr;
 }
 
@@ -167,63 +180,55 @@ DataTable > .datatable--hover {
     padding: 1 0 0 0;
 }
 
-#repro-detail, #goals-detail {
-    padding: 1 1 0 2;
-}
-
-#repro-detail, #goals-detail {
+#repro-detail {
     width: 1fr;
-    border-left: solid #232a32;
+    border-left: ascii #303030;
     padding: 0 1 0 2;
 }
 
-#goals-table {
-    height: 1fr;
-}
-
 ListView {
-    background: #0d1117;
+    background: #0a0a0a;
     scrollbar-size-vertical: 1;
 }
 
 ListItem {
-    background: #0d1117;
+    background: #0a0a0a;
     padding: 0 1;
     height: 1;
 }
 
 ListItem.--highlight {
-    background: #1c2731;
+    background: #1a1a1a;
 }
 
 ListView:focus > ListItem.--highlight {
-    background: #27404e;
+    background: #1e2b28;
 }
 
 LookupScreen, ShardPrompt, HelpScreen {
     align: center middle;
-    background: #05080b 75%;
+    background: #000000 75%;
 }
 
 #lookup-box {
     width: 62;
     height: auto;
-    border: round #7fd1b9;
-    background: #12161c;
+    border: ascii #8fd6c4;
+    background: #121212;
     padding: 1 2;
 }
 
 #lookup-box Input {
-    background: #0d1117;
-    border: tall #232a32;
+    background: #0a0a0a;
+    border: ascii #303030;
 }
 
 #lookup-box Input:focus {
-    border: tall #7fd1b9;
+    border: ascii #8fd6c4;
 }
 
 #lookup-hint {
-    color: #6b7683;
+    color: #808080;
     padding: 0 0 1 0;
 }
 
@@ -233,8 +238,8 @@ LookupScreen, ShardPrompt, HelpScreen {
     height: auto;
     max-height: 90%;
     scrollbar-size-vertical: 1;
-    border: round #7fd1b9;
-    background: #12161c;
+    border: ascii #8fd6c4;
+    background: #121212;
     padding: 1 2;
 }
 
@@ -248,41 +253,32 @@ LookupScreen, ShardPrompt, HelpScreen {
     height: auto;
 }
 
-#goals-table {
-    width: 22;
-    padding: 1 0 0 0;
-}
-
-#corpus-controls {
-    padding: 1 0 1 0;
-}
-
 VerticalScroll, DataTable, ListView {
     scrollbar-size-vertical: 1;
     scrollbar-size-horizontal: 1;
-    scrollbar-background: #12161c;
-    scrollbar-background-hover: #12161c;
-    scrollbar-background-active: #12161c;
-    scrollbar-color: #2f3841;
-    scrollbar-color-hover: #46525e;
-    scrollbar-color-active: #7fd1b9;
+    scrollbar-background: #121212;
+    scrollbar-background-hover: #121212;
+    scrollbar-background-active: #121212;
+    scrollbar-color: #303030;
+    scrollbar-color-hover: #454545;
+    scrollbar-color-active: #8fd6c4;
 }
 
 /* stacked layout for narrow terminals */
-.narrow #corpus-split, .narrow #repro-split, .narrow #goals-split {
+.narrow #corpus-split, .narrow #repro-split {
     layout: vertical;
 }
 
-.narrow #corpus-table, .narrow #repro-list, .narrow #goals-table {
+.narrow #corpus-table, .narrow #repro-list {
     width: 1fr;
     height: 1fr;
 }
 
-.narrow #corpus-detail, .narrow #repro-detail, .narrow #goals-detail {
+.narrow #corpus-detail, .narrow #repro-detail {
     width: 1fr;
     height: 1fr;
     border-left: none;
-    border-top: solid #232a32;
+    border-top: ascii #303030;
     padding: 0 1;
 }
 
@@ -296,8 +292,6 @@ VerticalScroll, DataTable, ListView {
 .narrow SpaceMap {
     width: 35;
 }
-
-
 
 .narrow #map-hot {
     display: none;
@@ -322,7 +316,7 @@ VerticalScroll, DataTable, ListView {
     width: 1fr;
     height: 9;
     border-left: none;
-    border-top: solid #232a32;
+    border-top: ascii #303030;
     padding: 0 1;
 }
 
