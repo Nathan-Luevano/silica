@@ -28,9 +28,6 @@ SILICA_ARTIFACTS=/path/to/artifacts silica-scope
 silica-scope --report                 # static summary, no TUI
 ```
 
-`GOALS.yml` is picked up from the artifacts root's parent, or pass
-`--goals /path/to/GOALS.yml`.
-
 ## Panes
 
 | key | pane | what's in it |
@@ -38,8 +35,7 @@ silica-scope --report                 # static summary, no TUI
 | `1` | overview | headline counts, per-tool agreement, taxonomy, provenance, what's on disk |
 | `2` | map | the 2³² space as a 16×16 shard grid, four colour channels |
 | `3` | corpus | stream `disagreements/*.zst`, filter by category, inspect any word |
-| `4` | reproducers | the G6 writeups, parsed and cross-checked |
-| `5` | goals | G1–G7, their verifiers, and which artifacts each one produces |
+| `4` | reproducers | the filing-ready writeups, parsed and cross-checked |
 
 `?` for the full keymap, `/` to look up any 32-bit encoding, `r` to reload
 from disk, `q` to quit.
