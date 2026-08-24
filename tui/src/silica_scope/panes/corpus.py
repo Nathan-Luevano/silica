@@ -89,7 +89,7 @@ class CorpusMixin(_Base):
         table = self.query_one("#corpus-table", DataTable)
         table.clear()
         self.query_one("#corpus-detail-body", Static).update(
-            Text("select a row to inspect the encoding", style="#6b7683")
+            Text("select a row to inspect the encoding", style=views.DIM)
         )
         self._refresh_corpus_controls()
         corpus = self.session.corpus
@@ -97,7 +97,7 @@ class CorpusMixin(_Base):
             self._corpus_status(
                 Text(
                     f"no disagreements/ under {self.session.root} - nothing to browse",
-                    style="#e0a03a",
+                    style=views.DIM,
                 )
             )
             return
@@ -106,7 +106,7 @@ class CorpusMixin(_Base):
                 Text(
                     f"shard {self.shard_id:03d} recorded no disagreements "
                     "(the sweep writes no file at all for a clean shard)",
-                    style="#6b7683",
+                    style=views.DIM,
                 )
             )
             return
@@ -116,14 +116,14 @@ class CorpusMixin(_Base):
         corpus = self.session.corpus
         shard = self.session.shard(self.shard_id)
         line = Text()
-        line.append(f" shard {self.shard_id:03d} ", style="bold #0d1117 on #7fd1b9")
+        line.append(f" shard {self.shard_id:03d} ", style=f"bold #0a0a0a on {views.ACCENT_COLOR}")
         if shard is not None:
-            line.append(f"  0x{shard.start:08x}..0x{shard.end - 1:08x}", style="#6b7683")
-        line.append("   filter ", style="#6b7683")
-        line.append(self.filter_label, style="#5aa9e6")
+            line.append(f"  0x{shard.start:08x}..0x{shard.end - 1:08x}", style=views.DIM)
+        line.append("   filter ", style=views.DIM)
+        line.append(self.filter_label, style=views.FG)
         if corpus is not None and corpus.has_shard(self.shard_id):
             line.append(
-                f"   corpus {human_bytes(corpus.shard_bytes(self.shard_id))}", style="#6b7683"
+                f"   corpus {human_bytes(corpus.shard_bytes(self.shard_id))}", style=views.DIM
             )
         index = corpus.cached_index(self.shard_id) if corpus else None
         rows: list[RenderableType] = [line]
@@ -132,25 +132,25 @@ class CorpusMixin(_Base):
                 Text(
                     " ! this shard's .zst ends mid-record - it is truncated, "
                     "so these counts are of what survives",
-                    style="#e0335b",
+                    style=views.BAD,
                 )
             )
         if index is not None and index.counts:
             counts = Text()
-            counts.append(" indexed: ", style="#6b7683")
-            counts.append(f"{commas(index.total)} records", style="#c5ced6")
+            counts.append(" indexed: ", style=views.DIM)
+            counts.append(f"{commas(index.total)} records", style=views.FG)
             for name, count in sorted(index.counts.items(), key=lambda kv: -kv[1]):
                 counts.append("   ")
-                counts.append(name, style=views.CATEGORY_STYLE.get(name, "white"))
-                counts.append(f" {commas(count)}", style="#c5ced6")
+                counts.append(name, style=views.FG)
+                counts.append(f" {commas(count)}", style=views.FG)
             if index.bad_lines:
-                counts.append(f"   {commas(index.bad_lines)} unclassified", style="#e0a03a")
+                # unparseable lines inside an indexed shard are a real
+                # anomaly, not routine - the same bar as a truncated file.
+                counts.append(f"   {commas(index.bad_lines)} unclassified", style=views.BAD)
             rows.append(counts)
         else:
             rows.append(
-                Text(
-                    " s shard   f filter   n next page   i index this shard", style="#6b7683"
-                )
+                Text(" s shard   f filter   n next page   i index this shard", style=views.DIM)
             )
         self.query_one("#corpus-controls", Static).update(Group(*rows))
 
@@ -158,10 +158,12 @@ class CorpusMixin(_Base):
         self.query_one("#corpus-status", Static).update(renderable)
 
     def _valid_cell(self, record: Record, oracle: str) -> Text:
+        # plain ASCII, no colour: "invalid" is routine data (most of the
+        # space is legitimately UNALLOCATED), not a problem to flag.
         value = record.oracle_valid.get(oracle)
         if value is None:
-            return Text(" ? ", style="#6b7683")
-        return Text(" ✓ ", style="#5fbf6a") if value else Text(" ✗ ", style="#e0335b")
+            return Text(" ? ", style=views.DIM)
+        return Text(" + ", style=views.FG) if value else Text(" - ", style=views.DIM)
 
     def _add_rows(self, records: list[Record]) -> None:
         table = self.query_one("#corpus-table", DataTable)
@@ -170,14 +172,14 @@ class CorpusMixin(_Base):
             llvm = "" if is_placeholder(raw_llvm) else views.clean(raw_llvm or "")
             spec = "" if is_placeholder(raw_spec) else views.clean(raw_spec or "")
             table.add_row(
-                Text(record.hex, style="#7fd1b9"),
+                Text(record.hex, style=views.ACCENT_COLOR),
                 views.category_text(record.category, short=True),
                 self._valid_cell(record, "capstone"),
                 self._valid_cell(record, "llvm"),
                 self._valid_cell(record, "spec"),
                 self._valid_cell(record, "unicorn"),
-                Text(truncate(llvm, 16), style="#c5ced6") if llvm else Text("·", style="#3d4650"),
-                Text(truncate(spec, 10), style="#7fd1b9") if spec else Text("·", style="#3d4650"),
+                Text(truncate(llvm, 16), style=views.FG) if llvm else Text("-", style=views.DIM),
+                Text(truncate(spec, 10), style=views.FG) if spec else Text("-", style=views.DIM),
             )
         self.records.extend(records)
 
@@ -187,7 +189,7 @@ class CorpusMixin(_Base):
         if corpus is None:
             return
         self._loading = True
-        self.call_from_thread(self._corpus_status, Text("scanning…", style="#e0a03a"))
+        self.call_from_thread(self._corpus_status, Text("scanning...", style=views.DIM))
         found: list[Record] = []
         try:
             self._stream_status = StreamStatus()
@@ -206,7 +208,7 @@ class CorpusMixin(_Base):
         except CorpusUnavailable as exc:
             self._loading = False
             self._stream = None
-            self.call_from_thread(self._corpus_status, Text(str(exc), style="#e0335b"))
+            self.call_from_thread(self._corpus_status, Text(str(exc), style=views.BAD))
             return
         self._loading = False
         if token != self._scan_token:
@@ -224,20 +226,20 @@ class CorpusMixin(_Base):
         if not self.records:
             status.append(
                 f"no {self.filter_label} records in shard {self.shard_id:03d}",
-                style="#e0a03a",
+                style=views.DIM,
             )
-            status.append("   press f to widen the filter", style="#6b7683")
+            status.append("   press f to widen the filter", style=views.DIM)
         else:
-            status.append(f"{commas(len(self.records))} loaded", style="#c5ced6")
+            status.append(f"{commas(len(self.records))} loaded", style=views.FG)
             if self._exhausted:
-                status.append("   end of this shard's matches", style="#6b7683")
+                status.append("   end of this shard's matches", style=views.DIM)
             else:
-                status.append("   n for the next page", style="#6b7683")
+                status.append("   n for the next page", style=views.DIM)
             index = self.session.corpus.cached_index(self.shard_id) if self.session.corpus else None
             if index is None:
-                status.append("   i to count this shard exactly", style="#6b7683")
+                status.append("   i to count this shard exactly", style=views.DIM)
             if self._stream_status.truncated:
-                status.append("   ! truncated .zst", style="#e0335b")
+                status.append("   ! truncated .zst", style=views.BAD)
         self._corpus_status(status)
         self._refresh_corpus_controls()
 
@@ -275,7 +277,7 @@ class CorpusMixin(_Base):
         self._scan_token += 1
         self._stream = None
         self._loading = False
-        self._corpus_status(Text("scan cancelled - n to start a fresh page", style="#e0a03a"))
+        self._corpus_status(Text("scan cancelled - n to start a fresh page", style=views.DIM))
 
     def key_n(self) -> None:
         if self._active_tab() != "corpus" or self._loading or self._exhausted:
@@ -309,15 +311,15 @@ class CorpusMixin(_Base):
             last[0], last[1] = now, percent
             self.call_from_thread(
                 self._corpus_status,
-                Text(f"indexing shard {shard_id:03d}: {percent}%", style="#e0a03a"),
+                Text(f"indexing shard {shard_id:03d}: {percent}%", style=views.DIM),
             )
 
         try:
             corpus.index_shard(shard_id, progress=progress)
         except CorpusUnavailable as exc:
-            self.call_from_thread(self._corpus_status, Text(str(exc), style="#e0335b"))
+            self.call_from_thread(self._corpus_status, Text(str(exc), style=views.BAD))
             return
         self.call_from_thread(self._refresh_corpus_controls)
         self.call_from_thread(
-            self._corpus_status, Text(f"shard {shard_id:03d} indexed", style="#5fbf6a")
+            self._corpus_status, Text(f"shard {shard_id:03d} indexed", style=views.FG)
         )
