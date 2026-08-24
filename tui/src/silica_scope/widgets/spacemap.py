@@ -17,28 +17,25 @@ from textual.widget import Widget
 from ..fmt import abbreviate, human_bytes, pct
 from ..model import Shard
 
-# black -> deep green -> amber -> red. reads as an instrument, and the
-# steps are far enough apart to survive a low-contrast terminal theme.
-HEAT = (
-    "#12161c",
-    "#12351f",
-    "#1c5a2a",
-    "#3f8c2c",
-    "#7fae24",
-    "#c39a1a",
-    "#d4741d",
-    "#cf4a2b",
-    "#e0335b",
-)
-EMPTY = "#1a1d23"
-CELL = "██"
+# the map is the one place a grid of distinct cells earns its keep - but the
+# palette is still just the app's two colours plus grayscale. three states,
+# each with its own glyph as well as its own colour, so the shape survives
+# even on a terminal with no colour at all: "." empty, "+" some, "#" hot.
+EMPTY_GLYPH, SOME_GLYPH, HOT_GLYPH = ".", "+", "#"
+EMPTY_STYLE = Style(color="#3a3a3a")
+SOME_STYLE = Style(color="#8fd6c4")
+HOT_STYLE = Style(color="#e0335b")
+# a shard counts as "hot" once its value clears this fraction - tuned so the
+# real oracle-spread data lands roughly a third hot, not nearly all of it.
+HOT_THRESHOLD = 0.5
+
 CELL_W = 3
 GUTTER = 3
 COLS = 16
-LABEL_STYLE = Style(color="#4a545f")
-HEADER_STYLE = Style(color="#6b7683")
+LABEL_STYLE = Style(color="#5a5a5a")
+HEADER_STYLE = Style(color="#808080")
 CURSOR_STYLE = Style(color="#ffffff", bold=True)
-CURSOR_DIM = Style(color="#5c6773")
+CURSOR_DIM = Style(color="#6a6a6a")
 
 
 @dataclass(frozen=True)
@@ -82,10 +79,6 @@ class SpaceMap(Widget, can_focus=True):
     cursor = reactive(0)
     mode_index = reactive(0)
     compact = reactive(False)
-
-    @property
-    def cell(self) -> str:
-        return "█" if self.compact else "██"
 
     @property
     def cell_w(self) -> int:
@@ -152,17 +145,17 @@ class SpaceMap(Widget, can_focus=True):
             return f"{pct(value, 1)} ({abbreviate(value * shard.size)} words)"
         return pct(value, 1)
 
-    def _style_for(self, shard_id: int) -> Style:
+    def _glyph_for(self, shard_id: int) -> tuple[str, Style]:
         value = self.value_for(shard_id)
-        if value is None:
-            return Style(color=EMPTY)
-        index = min(int(value * (len(HEAT) - 1) + 0.5), len(HEAT) - 1)
-        if value > 0 and index == 0:
-            index = 1
-        return Style(color=HEAT[index])
+        if value is None or value <= 0:
+            return EMPTY_GLYPH, EMPTY_STYLE
+        if value >= HOT_THRESHOLD:
+            return HOT_GLYPH, HOT_STYLE
+        return SOME_GLYPH, SOME_STYLE
 
     def render_line(self, y: int) -> Strip:
-        cell, cell_w = self.cell, self.cell_w
+        cell_w = self.cell_w
+        glyph_w = cell_w - 1
         width = GUTTER + COLS * cell_w
         if y == 0:
             segments = [Segment(" " * GUTTER, HEADER_STYLE)]
@@ -174,23 +167,24 @@ class SpaceMap(Widget, can_focus=True):
         if row >= self.rows:
             return Strip.blank(self.size.width)
         style = LABEL_STYLE + Style(bold=True) if row == self.cursor // COLS else LABEL_STYLE
-        # the cursor is bracketed rather than reverse-videoed: reversing a
-        # solid block just repaints it in the background colour, which makes
-        # the selected cell vanish exactly when it is a dark one.
+        # the cursor is bracketed in plain "[" "]" rather than reverse-video:
+        # reversing a cell just repaints it in the background colour, which
+        # makes the selection vanish exactly when the cell is already dark.
         on_row = row == self.cursor // COLS
         col = self.cursor % COLS
         cursor_style = CURSOR_STYLE if self.has_focus else CURSOR_DIM
         segments = [
             Segment(f"{row:x} ", style),
-            Segment("▕" if on_row and col == 0 else " ", cursor_style if on_row and col == 0 else style),
+            Segment("[" if on_row and col == 0 else " ", cursor_style if on_row and col == 0 else style),
         ]
         for x in range(COLS):
             shard_id = row * COLS + x
-            segments.append(Segment(cell, self._style_for(shard_id)))
+            glyph, glyph_style = self._glyph_for(shard_id)
+            segments.append(Segment(glyph.ljust(glyph_w), glyph_style))
             if on_row and x == col:
-                segments.append(Segment("▏", cursor_style))
+                segments.append(Segment("]", cursor_style))
             elif on_row and x + 1 == col:
-                segments.append(Segment("▕", cursor_style))
+                segments.append(Segment("[", cursor_style))
             else:
                 segments.append(Segment(" ", Style()))
         return Strip(segments, width)
@@ -232,10 +226,11 @@ class SpaceMap(Widget, can_focus=True):
 
     def legend(self) -> Text:
         text = Text()
-        text.append("low ", style="#6b7683")
-        for colour in HEAT:
-            text.append("█", style=colour)
-        text.append(" high", style="#6b7683")
+        text.append(f"{EMPTY_GLYPH} empty", style=EMPTY_STYLE)
+        text.append("   ")
+        text.append(f"{SOME_GLYPH} some", style=SOME_STYLE)
+        text.append("   ")
+        text.append(f"{HOT_GLYPH} hot (>={int(HOT_THRESHOLD * 100)}%)", style=HOT_STYLE)
         return text
 
     def ranked(self, limit: int = 8) -> list[tuple[int, float]]:
