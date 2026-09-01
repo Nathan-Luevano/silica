@@ -12,9 +12,13 @@ license = "Apache-2.0"
 authors = [{ name = "Nathan Luevano" }]
 keywords = ["aarch64", "disassembler", "differential-testing", "tui"]
 classifiers = [
+  "Development Status :: 4 - Beta",
   "Environment :: Console",
   "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
   "Topic :: Software Development :: Disassemblers",
 ]
 dependencies = [
@@ -23,7 +27,6 @@ dependencies = [
   "rich>=13.0",
   "textual>=0.80",
   "zstandard>=0.22",
-  "PyYAML>=6.0",
 ]
 
 [project.scripts]
