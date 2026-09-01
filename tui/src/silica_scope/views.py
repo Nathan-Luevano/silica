@@ -21,9 +21,9 @@ from .session import Session
 # count against the "2-3 colours total" budget - ACCENT and BAD are the
 # whole budget. ACCENT marks anything interactive, selected, or singled
 # out as the reference value (the spec oracle's own row). BAD is reserved
-# for a real problem: a malformed artifact, a crashed shard, a FAILing
-# goal, an actual disagreement with the spec oracle - never for an
-# ordinary "invalid" verdict, which is completely routine data.
+# for a real problem: a malformed artifact, a crashed shard, an actual
+# disagreement with the spec oracle - never for an ordinary "invalid"
+# verdict, which is completely routine data.
 ACCENT_COLOR = "#8fd6c4"
 ACCENT = f"bold {ACCENT_COLOR}"
 FG = "#c8c8c8"

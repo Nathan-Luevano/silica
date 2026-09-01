@@ -45,9 +45,12 @@ def report(root: Path) -> int:
     console = Console(width=max(probe.width, 104))
     session = load(root)
     if not session.has_anything:
+        # same palette as the TUI's own empty state: absence is a normal
+        # state (a published checkout ships only reproducers/), not a
+        # problem, so it isn't red - see views.py's ACCENT/BAD convention.
         console.print(
-            f"[#e0a03a]no SILICA artifacts under[/] {root}\n"
-            "point it at one: [#7fd1b9]silica-scope /path/to/artifacts[/]"
+            f"[bold {views.FG}]no SILICA artifacts under[/] {root}\n"
+            f"point it at one: [{views.ACCENT_COLOR}]silica-scope /path/to/silica/artifacts[/]"
         )
         return 1
     problems = views.problems_panel(session)
