@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "silica-scope"
 version = "0.1.0"
 description = "Interactive terminal reader for a finished SILICA AArch64 decode sweep"
-readme = "README.md"
+readme = "PYPI_README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 authors = [{ name = "Nathan Luevano" }]
