@@ -13,6 +13,10 @@ permissions:
 
 jobs:
   build:
+    # a release event has no tag-pattern filter (unlike push), so gate it
+    # here - only scope-v* tags publish silica-scope. a manual dispatch
+    # always runs, since a maintainer clicking the button is the guard.
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'scope-v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
