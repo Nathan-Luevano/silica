@@ -12,11 +12,9 @@ check:
 	! grep -rnE '^\s*(///|//!)' crates/
 	micromamba run -p ./.venv python scripts/check_hooks.py
 	micromamba run -p ./.venv python scripts/check_verifier_hashes.py
-	micromamba run -p ./.venv python scripts/check_worklog_drift.py
-	# leading - : shown, not gated, until G1-G7 are actually implemented.
-	# `make verify` below is the real per-goal gate; v1 is done when both
-	# this line and `make verify` are green (design.md §8 P6, §12.1).
-	-micromamba run -p ./.venv python -m pysilica.cli verify
+	# one verifier run supplies both the real G1-G7 gate and the worklog
+	# drift observation. Running them separately rereads the full G4 corpus.
+	micromamba run -p ./.venv python scripts/check_worklog_drift.py --gate
 
 doctor:
 	micromamba run -p ./.venv python -m pysilica.cli doctor
