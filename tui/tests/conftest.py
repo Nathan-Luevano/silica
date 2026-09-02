@@ -27,7 +27,7 @@ def full_artifacts(tmp_path: Path) -> Path:
                         "validity_agreement_micro": 1 - disagreements / 4294967296,
                         "macro_validity_agreement": 1 - disagreements / 4294967296,
                         "text_tier_disagreements_with_spec": 1000,
-                        "text_tier_agreement_micro": 0.999,
+                        "text_tier_agreement_micro": 1 - 1000 / 1266064016,
                         "text_tier_method": "sampled",
                         "text_tier_sample_size": 1000000,
                         "text_tier_population": 1266064016,
@@ -47,8 +47,12 @@ def full_artifacts(tmp_path: Path) -> Path:
         json.dumps(
             {
                 "spec_release": "ISA_A64_xml_A_profile-2026-06_mc",
+                "tiling_files_checked": 2259,
+                "tiling_files_passed": 2259,
                 "allocated": 1799435776,
                 "unallocated": 2495531520,
+                "ret_test_word": "0xd65f03c0",
+                "ret_test_passed": True,
             }
         ),
     )

@@ -27,7 +27,7 @@ class Session:
 
     @property
     def spec_release(self) -> str:
-        if self.g1.ok and isinstance(self.g1.value, dict):
+        if self.g1_supports_sweep and isinstance(self.g1.value, dict):
             return str(self.g1.value.get("spec_release", "unknown"))
         return "unknown"
 
@@ -50,9 +50,21 @@ class Session:
         return None
 
     def g1_value(self, key: str) -> object | None:
-        if self.g1.ok and isinstance(self.g1.value, dict):
+        if self.g1_supports_sweep and isinstance(self.g1.value, dict):
             return self.g1.value.get(key)
         return None
+
+    @property
+    def metrics_supports_sweep(self) -> bool:
+        return (
+            self.metrics.ok
+            and isinstance(self.metrics.value, model.Metrics)
+            and self.metrics.value.supports_sweep_evidence
+        )
+
+    @property
+    def g1_supports_sweep(self) -> bool:
+        return self.g1.ok and not model.g1_evidence_problems(self.g1.value)
 
     def shard(self, shard_id: int) -> model.Shard | None:
         for s in self.shards:
@@ -65,7 +77,7 @@ class Session:
         # "all 2^32 encodings swept" is a claim that the whole space was
         # covered. one surviving shard record does not support it: either a
         # published metrics/g1 summary, or all 256 shards, does.
-        if self.metrics.ok or self.g1.ok:
+        if self.metrics_supports_sweep or self.g1_supports_sweep:
             return True
         return {shard.shard_id for shard in self.shards} == set(range(SHARD_COUNT))
 
@@ -86,8 +98,16 @@ class Session:
         ):
             if loaded.error and not loaded.error.startswith("not found:"):
                 out.append(f"{label}: {loaded.error}")
-        if self.metrics.ok:
-            out.extend(f"report/metrics.json: {w}" for w in self.metrics.value.warnings)
+        if self.metrics.ok and isinstance(self.metrics.value, model.Metrics):
+            out.extend(
+                f"report/metrics.json: {problem}"
+                for problem in self.metrics.value.evidence_problems()
+            )
+        if self.g1.ok:
+            out.extend(
+                f"g1_metrics.json: {problem}"
+                for problem in model.g1_evidence_problems(self.g1.value)
+            )
         out.extend(
             f"sweep/shards: {p}"
             for p in self.shard_problems[:5]

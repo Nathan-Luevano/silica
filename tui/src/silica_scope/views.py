@@ -13,7 +13,7 @@ from rich.text import Text
 from . import bits
 from .corpus import Record, is_placeholder
 from .fmt import commas, fine_bar, human_bytes, pct, truncate
-from .model import ORACLES, TOTAL_WORDS, Reproducer, Shard
+from .model import ORACLES, TOTAL_WORDS, Metrics, Reproducer, Shard
 from .session import Session
 
 # two colours, used sparingly, plus the two greys that make up the plain
@@ -134,11 +134,14 @@ def headline(session: Session) -> RenderableType:
 
 
 def tool_table(session: Session) -> RenderableType:
-    if not session.metrics.ok:
+    if not session.metrics_supports_sweep:
+        reason = session.metrics.error
+        if session.metrics.ok and isinstance(session.metrics.value, Metrics):
+            reason = "; ".join(session.metrics.value.evidence_problems()[:3])
         return missing_panel(
             "per-tool metrics",
             str(session.artifacts.path("metrics")),
-            session.metrics.error or "report/metrics.json could not be read",
+            reason or "report/metrics.json could not be read",
         )
     metrics = session.metrics.value
     table = Table(box=SIMPLE_ASCII, expand=True, pad_edge=False, header_style=DIM)

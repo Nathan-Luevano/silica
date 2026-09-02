@@ -69,6 +69,15 @@ directory merely containing 256 JSON files is not enough. Published metrics
 or G1 metrics remain independent full-sweep evidence because those are the
 finished pipeline's summary artifacts.
 
+Summary files are evidence only when their own numbers are internally
+consistent. `report/metrics.json` must describe the full 2³²-word population,
+contain exactly Capstone, LLVM and Unicorn, use finite in-range rates, and have
+counts, rates and ranking that agree with each other. `g1_metrics.json` must
+show a successful RET check, equal tiling counts, and allocated plus
+unallocated counts covering exactly 2³² words. Parseable but incomplete or
+contradictory summaries remain visible in the problems panel, but cannot turn
+the overview's “encodings swept” claim on.
+
 ## Development
 
 ```bash
