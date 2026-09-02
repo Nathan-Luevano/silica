@@ -180,6 +180,7 @@ def load_shards(directory: Path) -> tuple[list[Shard], list[str]]:
     problems: list[str] = []
     if not directory.is_dir():
         return shards, [f"not found: {directory}"]
+    seen_ids: set[int] = set()
     for path in sorted(directory.glob("*.json")):
         loaded = _read_json(path)
         if not loaded.ok:
@@ -189,25 +190,126 @@ def load_shards(directory: Path) -> tuple[list[Shard], list[str]]:
         if not isinstance(d, dict):
             problems.append(f"{path.name}: not an object")
             continue
-        try:
-            counts = d.get("valid_counts") or {}
-            shards.append(
-                Shard(
-                    shard_id=int(d["shard_id"]),
-                    start=int(d.get("start", 0)),
-                    end=int(d.get("end", 0)),
-                    valid_counts={k: int(v) for k, v in counts.items()},
-                    crash_count=int(d.get("crash_count", 0)),
-                    untriaged_crash_count=int(d.get("untriaged_crash_count", 0)),
-                    content_hash=str(d.get("content_hash", "")),
-                    duration_ms=int(d.get("duration_ms", 0)),
-                    status=str(d.get("status", "unknown")),
-                )
-            )
-        except (KeyError, TypeError, ValueError) as exc:
-            problems.append(f"{path.name}: {exc}")
+        shard, record_problems = _parse_shard(path, d, seen_ids)
+        problems.extend(f"{path.name}: {problem}" for problem in record_problems)
+        if shard is not None:
+            shards.append(shard)
+            seen_ids.add(shard.shard_id)
     shards.sort(key=lambda s: s.shard_id)
     return shards, problems
+
+
+def _strict_int(value: object, field_name: str) -> int:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise TypeError(f"{field_name} must be an integer")
+    return value
+
+
+def _parse_shard(
+    path: Path, d: dict[str, Any], seen_ids: set[int]
+) -> tuple[Shard | None, list[str]]:
+    problems: list[str] = []
+    try:
+        shard_id = _strict_int(d.get("shard_id"), "shard_id")
+    except TypeError as exc:
+        return None, [str(exc)]
+
+    if not 0 <= shard_id < SHARD_COUNT:
+        problems.append(f"shard_id {shard_id} is outside 0..255")
+    expected_name = f"{shard_id:03d}.json"
+    if path.name != expected_name:
+        problems.append(f"filename does not match shard_id {shard_id} (expected {expected_name})")
+    if shard_id in seen_ids:
+        problems.append(f"duplicate shard_id {shard_id}")
+
+    start = _checked_int(d, "start", problems)
+    end = _checked_int(d, "end", problems)
+    expected_start = shard_id * SHARD_SIZE
+    expected_end = expected_start + SHARD_SIZE
+    if start is not None and start != expected_start:
+        problems.append(f"start is {start}, expected {expected_start}")
+    if end is not None and end != expected_end:
+        problems.append(f"end is {end}, expected {expected_end}")
+
+    raw_oracles = d.get("oracles")
+    if raw_oracles != list(ORACLES):
+        problems.append(f"oracles must be {list(ORACLES)!r} in that order")
+
+    counts = _checked_counts(d.get("valid_counts"), problems)
+    crash_count = _checked_nonnegative(d, "crash_count", problems)
+    untriaged = _checked_nonnegative(d, "untriaged_crash_count", problems)
+    if crash_count is not None and untriaged is not None and untriaged > crash_count:
+        problems.append("untriaged_crash_count exceeds crash_count")
+
+    content_hash = d.get("content_hash")
+    if not isinstance(content_hash, str) or re.fullmatch(r"[0-9a-f]{64}", content_hash) is None:
+        problems.append("content_hash is not a 64-char lowercase sha256 hex digest")
+    duration_ms = _checked_nonnegative(d, "duration_ms", problems)
+    status = d.get("status")
+    if status not in {"complete", "crashed"}:
+        problems.append("status must be 'complete' or 'crashed'")
+    if status == "complete" and untriaged not in {None, 0}:
+        problems.append("complete shard has untriaged crashes")
+
+    if problems:
+        return None, problems
+    assert start is not None
+    assert end is not None
+    assert counts is not None
+    assert crash_count is not None
+    assert untriaged is not None
+    assert isinstance(content_hash, str)
+    assert duration_ms is not None
+    assert isinstance(status, str)
+    return (
+        Shard(
+            shard_id=shard_id,
+            start=start,
+            end=end,
+            valid_counts=counts,
+            crash_count=crash_count,
+            untriaged_crash_count=untriaged,
+            content_hash=content_hash,
+            duration_ms=duration_ms,
+            status=status,
+        ),
+        [],
+    )
+
+
+def _checked_int(d: dict[str, Any], key: str, problems: list[str]) -> int | None:
+    try:
+        return _strict_int(d.get(key), key)
+    except TypeError as exc:
+        problems.append(str(exc))
+        return None
+
+
+def _checked_nonnegative(d: dict[str, Any], key: str, problems: list[str]) -> int | None:
+    value = _checked_int(d, key, problems)
+    if value is not None and value < 0:
+        problems.append(f"{key} must be nonnegative")
+    return value
+
+
+def _checked_counts(value: object, problems: list[str]) -> dict[str, int] | None:
+    if not isinstance(value, dict):
+        problems.append("valid_counts must be an object")
+        return None
+    if set(value) != set(ORACLES):
+        problems.append(f"valid_counts keys must be exactly {list(ORACLES)!r}")
+        return None
+    counts: dict[str, int] = {}
+    for oracle in ORACLES:
+        try:
+            count = _strict_int(value[oracle], f"valid_counts.{oracle}")
+        except TypeError as exc:
+            problems.append(str(exc))
+            continue
+        if not 0 <= count <= SHARD_SIZE:
+            problems.append(f"valid_counts.{oracle} is outside 0..{SHARD_SIZE}")
+        counts[oracle] = count
+    return counts
 
 
 REPRO_FIELDS = ("word", "category", "tool", "spec", "actual")
