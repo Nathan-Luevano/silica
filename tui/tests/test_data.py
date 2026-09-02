@@ -67,6 +67,182 @@ def test_shard_problems_are_collected_not_raised(corrupt_artifacts: Path) -> Non
     assert problems
 
 
+def _valid_shard_record(shard_id: int = 0) -> dict[str, object]:
+    start = shard_id * model.SHARD_SIZE
+    return {
+        "shard_id": shard_id,
+        "start": start,
+        "end": start + model.SHARD_SIZE,
+        "oracles": list(model.ORACLES),
+        "valid_counts": {oracle: shard_id for oracle in model.ORACLES},
+        "crash_count": 0,
+        "untriaged_crash_count": 0,
+        "content_hash": "a" * 64,
+        "duration_ms": 1,
+        "status": "complete",
+    }
+
+
+def _load_one_shard(tmp_path: Path, name: str, record: dict[str, object]) -> tuple[list[model.Shard], list[str]]:
+    directory = tmp_path / "shards"
+    directory.mkdir(exist_ok=True)
+    (directory / name).write_text(json.dumps(record))
+    return model.load_shards(directory)
+
+
+def test_valid_shard_record_loads_without_problems(tmp_path: Path) -> None:
+    shards, problems = _load_one_shard(tmp_path, "000.json", _valid_shard_record())
+    assert [shard.shard_id for shard in shards] == [0]
+    assert problems == []
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("shard_id", True, "shard_id must be an integer"),
+        ("shard_id", -1, "outside 0..255"),
+        ("shard_id", 256, "outside 0..255"),
+        ("start", None, "start must be an integer"),
+        ("start", 1, "start is 1, expected 0"),
+        ("end", 3, "end is 3, expected 16777216"),
+        ("oracles", ["spec", "llvm", "capstone", "unicorn"], "oracles must be"),
+        ("valid_counts", None, "valid_counts must be an object"),
+        ("valid_counts", {"spec": 0}, "valid_counts keys must be exactly"),
+        ("crash_count", -1, "crash_count must be nonnegative"),
+        ("untriaged_crash_count", -1, "untriaged_crash_count must be nonnegative"),
+        ("content_hash", "A" * 64, "content_hash is not"),
+        ("content_hash", "a" * 63, "content_hash is not"),
+        ("duration_ms", -1, "duration_ms must be nonnegative"),
+        ("status", "done", "status must be"),
+    ],
+)
+def test_invalid_shard_metadata_is_rejected(
+    tmp_path: Path, field: str, value: object, message: str
+) -> None:
+    record = _valid_shard_record()
+    record[field] = value
+    shards, problems = _load_one_shard(tmp_path, "000.json", record)
+    assert shards == []
+    assert any(message in problem for problem in problems)
+
+
+@pytest.mark.parametrize("bad_count", [-1, model.SHARD_SIZE + 1, True, 1.5, "7"])
+def test_invalid_shard_valid_count_is_rejected(tmp_path: Path, bad_count: object) -> None:
+    record = _valid_shard_record()
+    counts = dict(record["valid_counts"])
+    counts["spec"] = bad_count
+    record["valid_counts"] = counts
+    shards, problems = _load_one_shard(tmp_path, "000.json", record)
+    assert shards == []
+    assert any("valid_counts.spec" in problem for problem in problems)
+
+
+def test_complete_shard_with_untriaged_crash_is_rejected(tmp_path: Path) -> None:
+    record = _valid_shard_record()
+    record["crash_count"] = 2
+    record["untriaged_crash_count"] = 1
+    shards, problems = _load_one_shard(tmp_path, "000.json", record)
+    assert shards == []
+    assert any("complete shard has untriaged crashes" in problem for problem in problems)
+
+
+def test_untriaged_crashes_cannot_exceed_crashes(tmp_path: Path) -> None:
+    record = _valid_shard_record()
+    record["status"] = "crashed"
+    record["untriaged_crash_count"] = 1
+    shards, problems = _load_one_shard(tmp_path, "000.json", record)
+    assert shards == []
+    assert any("exceeds crash_count" in problem for problem in problems)
+
+
+def test_shard_filename_must_match_embedded_id(tmp_path: Path) -> None:
+    shards, problems = _load_one_shard(tmp_path, "007.json", _valid_shard_record(0))
+    assert shards == []
+    assert any("expected 000.json" in problem for problem in problems)
+
+
+def test_duplicate_shard_id_is_rejected_even_under_an_extra_filename(tmp_path: Path) -> None:
+    directory = tmp_path / "shards"
+    directory.mkdir()
+    record = _valid_shard_record(0)
+    (directory / "000.json").write_text(json.dumps(record))
+    (directory / "copy.json").write_text(json.dumps(record))
+    shards, problems = model.load_shards(directory)
+    assert [shard.shard_id for shard in shards] == [0]
+    assert any("duplicate shard_id 0" in problem for problem in problems)
+
+
+def test_malformed_256_file_set_cannot_claim_sweep_evidence(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    directory = root / "sweep" / "shards"
+    directory.mkdir(parents=True)
+    impossible = _valid_shard_record()
+    impossible.update({"shard_id": 999, "start": 7, "end": 3})
+    for shard_id in range(model.SHARD_COUNT):
+        (directory / f"{shard_id:03d}.json").write_text(json.dumps(impossible))
+    loaded = session.load(root)
+    assert loaded.shards == []
+    assert not loaded.has_sweep_evidence
+    assert loaded.complete_shards == 0
+    assert loaded.shard_problems
+
+
+def _write_complete_shard_set(root: Path) -> None:
+    directory = root / "sweep" / "shards"
+    directory.mkdir(parents=True)
+    for shard_id in range(model.SHARD_COUNT):
+        record = _valid_shard_record(shard_id)
+        (directory / f"{shard_id:03d}.json").write_text(json.dumps(record))
+
+
+def test_exact_valid_shard_set_supports_sweep_evidence(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    _write_complete_shard_set(root)
+    loaded = session.load(root)
+    assert [shard.shard_id for shard in loaded.shards] == list(range(model.SHARD_COUNT))
+    assert loaded.complete_shards == model.SHARD_COUNT
+    assert loaded.has_sweep_evidence
+    assert loaded.shard_problems == []
+
+
+def test_one_missing_shard_prevents_sweep_evidence(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    _write_complete_shard_set(root)
+    (root / "sweep" / "shards" / "137.json").unlink()
+    loaded = session.load(root)
+    assert len(loaded.shards) == model.SHARD_COUNT - 1
+    assert loaded.complete_shards == model.SHARD_COUNT - 1
+    assert not loaded.has_sweep_evidence
+
+
+def test_one_corrupt_shard_prevents_evidence_and_surfaces_problem(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    _write_complete_shard_set(root)
+    path = root / "sweep" / "shards" / "137.json"
+    record = _valid_shard_record(137)
+    record["start"] = 0
+    path.write_text(json.dumps(record))
+    loaded = session.load(root)
+    assert len(loaded.shards) == model.SHARD_COUNT - 1
+    assert loaded.complete_shards == model.SHARD_COUNT - 1
+    assert not loaded.has_sweep_evidence
+    assert any("137.json: start is 0" in problem for problem in loaded.shard_problems)
+    assert any("sweep/shards: 137.json" in problem for problem in loaded.problems())
+
+
+def test_crashed_shard_with_triaged_count_is_structurally_valid(tmp_path: Path) -> None:
+    record = _valid_shard_record()
+    record["status"] = "crashed"
+    record["crash_count"] = 3
+    record["untriaged_crash_count"] = 2
+    shards, problems = _load_one_shard(tmp_path, "000.json", record)
+    assert len(shards) == 1
+    assert shards[0].status == "crashed"
+    assert shards[0].crash_count == 3
+    assert shards[0].untriaged_crash_count == 2
+    assert problems == []
+
+
 def test_reproducer_parsing(full_artifacts: Path) -> None:
     repros = model.load_reproducers(full_artifacts / "reproducers")
     assert len(repros) == 1

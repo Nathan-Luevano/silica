@@ -67,7 +67,7 @@ class Session:
         # published metrics/g1 summary, or all 256 shards, does.
         if self.metrics.ok or self.g1.ok:
             return True
-        return len(self.shards) == SHARD_COUNT
+        return {shard.shard_id for shard in self.shards} == set(range(SHARD_COUNT))
 
     @property
     def complete_shards(self) -> int:

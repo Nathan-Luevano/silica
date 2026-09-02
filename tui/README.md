@@ -55,6 +55,20 @@ state, not an error: panes that have no data say what's missing and where it
 looked, and the overview never claims a sweep it can't see evidence of. A file
 that exists but is malformed *is* reported, per pane and in a problems banner.
 
+Shard records are treated as evidence, not hints. For a record under
+`sweep/shards/` to appear on the map it must match the documented SILICA
+format: its zero-padded filename and embedded ID agree, its range is the exact
+`2**24`-word interval for that ID, all four oracle counts are present and in
+bounds, and its crash state and content hash are well formed. A malformed
+record is listed as an artifact problem and does not contribute to the
+"complete shards" total.
+
+Likewise, the reader only says it has full-sweep evidence from shard records
+when the accepted records contain every distinct ID from 0 through 255. A
+directory merely containing 256 JSON files is not enough. Published metrics
+or G1 metrics remain independent full-sweep evidence because those are the
+finished pipeline's summary artifacts.
+
 ## Development
 
 ```bash
