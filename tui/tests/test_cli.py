@@ -66,6 +66,20 @@ def test_main_report_on_corrupt_artifacts_lists_problems_not_a_traceback(
     assert "artifact problem" in out
 
 
+def test_report_does_not_claim_a_sweep_from_empty_metrics(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = tmp_path / "artifacts"
+    (root / "report").mkdir(parents=True)
+    (root / "report" / "metrics.json").write_text("{}")
+    assert report(root) == 0
+    out = capsys.readouterr().out
+    assert "artifact problem" in out
+    assert "all 2^32, not sampled" not in out
+    assert "no sweep artifacts here" in out
+    assert "no per-tool metrics" in out
+
+
 def test_report_function_returns_the_same_codes_as_main(
     full_artifacts: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

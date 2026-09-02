@@ -44,6 +44,219 @@ def test_metrics_survives_a_malformed_per_tool(corrupt_artifacts: Path) -> None:
     assert any("per_tool" in w for w in loaded.value.warnings)
 
 
+def _without_other_sweep_evidence(root: Path, keep: str) -> None:
+    if keep != "metrics":
+        (root / "report" / "metrics.json").unlink(missing_ok=True)
+    if keep != "g1":
+        (root / "g1_metrics.json").unlink(missing_ok=True)
+
+
+def test_empty_metrics_cannot_support_a_full_sweep_claim(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    (root / "report").mkdir(parents=True)
+    (root / "report" / "metrics.json").write_text("{}")
+    loaded = session.load(root)
+    assert loaded.metrics.ok
+    assert not loaded.has_sweep_evidence
+    assert any("report/metrics.json" in problem for problem in loaded.problems())
+
+
+def test_valid_metrics_alone_support_full_sweep_evidence(full_artifacts: Path) -> None:
+    _without_other_sweep_evidence(full_artifacts, "metrics")
+    loaded = session.load(full_artifacts)
+    assert loaded.metrics.value.supports_sweep_evidence
+    assert loaded.has_sweep_evidence
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("format_version", 2, "format_version is 2"),
+        ("format_version", True, "not an integer"),
+        ("total_words", model.TOTAL_WORDS - 1, "total_words is"),
+        ("total_words", str(model.TOTAL_WORDS), "not an integer"),
+        ("spec_valid_count", -1, "spec_valid_count is outside"),
+        ("spec_valid_count", model.TOTAL_WORDS + 1, "spec_valid_count is outside"),
+    ],
+)
+def test_invalid_metric_roots_do_not_support_sweep_evidence(
+    full_artifacts: Path, field: str, value: object, message: str
+) -> None:
+    _without_other_sweep_evidence(full_artifacts, "metrics")
+    path = full_artifacts / "report" / "metrics.json"
+    data = json.loads(path.read_text())
+    data[field] = value
+    path.write_text(json.dumps(data))
+    loaded = session.load(full_artifacts)
+    assert not loaded.has_sweep_evidence
+    assert any(message in problem for problem in loaded.problems())
+
+
+@pytest.mark.parametrize("non_finite", [float("nan"), float("inf"), float("-inf")])
+def test_non_finite_metric_never_crashes_the_reader(
+    full_artifacts: Path, non_finite: float
+) -> None:
+    _without_other_sweep_evidence(full_artifacts, "metrics")
+    path = full_artifacts / "report" / "metrics.json"
+    data = json.loads(path.read_text())
+    data["per_tool"]["capstone"]["validity_agreement_micro"] = non_finite
+    path.write_text(json.dumps(data))
+    loaded = session.load(full_artifacts)
+    assert loaded.metrics.ok
+    assert not loaded.has_sweep_evidence
+    assert any("not a finite number" in problem for problem in loaded.problems())
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("validity_disagreements_with_spec", -1, "validity disagreements are outside"),
+        ("validity_agreement_micro", 0.5, "contradicts its disagreement count"),
+        ("macro_validity_agreement", 2.0, "macro_validity_agreement is outside"),
+        ("text_tier_disagreements_with_spec", -1, "must be nonnegative"),
+        ("text_tier_agreement_micro", 0.5, "contradicts its counts"),
+        ("text_tier_method", "estimated", "text_tier_method must be"),
+        ("text_tier_sample_size", -1, "must be nonnegative"),
+        ("text_tier_population", -1, "must be nonnegative"),
+    ],
+)
+def test_contradictory_tool_metrics_do_not_support_sweep_evidence(
+    full_artifacts: Path, field: str, value: object, message: str
+) -> None:
+    _without_other_sweep_evidence(full_artifacts, "metrics")
+    path = full_artifacts / "report" / "metrics.json"
+    data = json.loads(path.read_text())
+    data["per_tool"]["capstone"][field] = value
+    path.write_text(json.dumps(data))
+    loaded = session.load(full_artifacts)
+    assert not loaded.has_sweep_evidence
+    assert any(message in problem for problem in loaded.problems())
+
+
+def test_metric_tool_membership_and_ranking_are_evidence_invariants(
+    full_artifacts: Path,
+) -> None:
+    _without_other_sweep_evidence(full_artifacts, "metrics")
+    path = full_artifacts / "report" / "metrics.json"
+    data = json.loads(path.read_text())
+    data["per_tool"].pop("unicorn")
+    data["tool_ranking_worst_first"] = ["capstone", "capstone", "llvm"]
+    path.write_text(json.dumps(data))
+    loaded = session.load(full_artifacts)
+    assert not loaded.has_sweep_evidence
+    joined = " ".join(loaded.problems())
+    assert "per_tool keys must be exactly" in joined
+    assert "contains duplicates" in joined
+    assert "must contain exactly" in joined
+
+
+def test_metric_text_sample_cannot_exceed_population(full_artifacts: Path) -> None:
+    _without_other_sweep_evidence(full_artifacts, "metrics")
+    path = full_artifacts / "report" / "metrics.json"
+    data = json.loads(path.read_text())
+    capstone = data["per_tool"]["capstone"]
+    capstone["text_tier_sample_size"] = capstone["text_tier_population"] + 1
+    path.write_text(json.dumps(data))
+    loaded = session.load(full_artifacts)
+    assert not loaded.has_sweep_evidence
+    assert any("sample_size exceeds" in problem for problem in loaded.problems())
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("text_tier_method", "exhaustive"),
+        ("text_tier_sample_size", 999999),
+        ("text_tier_population", 1266064015),
+    ],
+)
+def test_per_tool_text_denominators_must_agree(
+    full_artifacts: Path, field: str, value: object
+) -> None:
+    _without_other_sweep_evidence(full_artifacts, "metrics")
+    path = full_artifacts / "report" / "metrics.json"
+    data = json.loads(path.read_text())
+    data["per_tool"]["capstone"][field] = value
+    if field == "text_tier_population":
+        population = int(value)
+        disagreements = data["per_tool"]["capstone"]["text_tier_disagreements_with_spec"]
+        data["per_tool"]["capstone"]["text_tier_agreement_micro"] = (
+            population - disagreements
+        ) / population
+    path.write_text(json.dumps(data))
+    loaded = session.load(full_artifacts)
+    assert not loaded.metrics_supports_sweep
+    assert any(f"per-tool {field} values disagree" in problem for problem in loaded.problems())
+
+
+def test_invalid_summaries_are_not_exposed_as_measurements(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    (root / "report").mkdir(parents=True)
+    (root / "report" / "metrics.json").write_text("{}")
+    (root / "g1_metrics.json").write_text(
+        json.dumps({"spec_release": "invented", "allocated": model.TOTAL_WORDS})
+    )
+    loaded = session.load(root)
+    assert not loaded.metrics_supports_sweep
+    assert not loaded.g1_supports_sweep
+    assert loaded.spec_release == "unknown"
+    assert loaded.g1_value("allocated") is None
+
+
+def test_empty_or_scalar_g1_metrics_cannot_support_a_sweep(tmp_path: Path) -> None:
+    for payload in ({}, []):
+        root = tmp_path / type(payload).__name__ / "artifacts"
+        root.mkdir(parents=True)
+        (root / "g1_metrics.json").write_text(json.dumps(payload))
+        loaded = session.load(root)
+        assert loaded.g1.ok
+        assert not loaded.has_sweep_evidence
+        assert any("g1_metrics.json" in problem for problem in loaded.problems())
+
+
+def test_valid_g1_metrics_alone_support_full_sweep_evidence(full_artifacts: Path) -> None:
+    _without_other_sweep_evidence(full_artifacts, "g1")
+    loaded = session.load(full_artifacts)
+    assert model.g1_evidence_problems(loaded.g1.value) == []
+    assert loaded.has_sweep_evidence
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("spec_release", "", "spec_release"),
+        ("tiling_files_checked", 0, "must be positive"),
+        ("tiling_files_passed", 1, "does not equal"),
+        ("allocated", -1, "allocated is outside"),
+        ("unallocated", -1, "unallocated is outside"),
+        ("ret_test_word", "0x00000000", "ret_test_word"),
+        ("ret_test_passed", False, "ret_test_passed"),
+    ],
+)
+def test_invalid_g1_summary_does_not_support_sweep_evidence(
+    full_artifacts: Path, field: str, value: object, message: str
+) -> None:
+    _without_other_sweep_evidence(full_artifacts, "g1")
+    path = full_artifacts / "g1_metrics.json"
+    data = json.loads(path.read_text())
+    data[field] = value
+    path.write_text(json.dumps(data))
+    loaded = session.load(full_artifacts)
+    assert not loaded.has_sweep_evidence
+    assert any(message in problem for problem in loaded.problems())
+
+
+def test_g1_allocated_and_unallocated_must_cover_the_space(full_artifacts: Path) -> None:
+    _without_other_sweep_evidence(full_artifacts, "g1")
+    path = full_artifacts / "g1_metrics.json"
+    data = json.loads(path.read_text())
+    data["unallocated"] -= 1
+    path.write_text(json.dumps(data))
+    loaded = session.load(full_artifacts)
+    assert not loaded.has_sweep_evidence
+    assert any("does not equal" in problem for problem in loaded.problems())
+
+
 def test_metrics_reports_broken_json(tmp_path: Path) -> None:
     path = tmp_path / "metrics.json"
     path.write_text("{ nope")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -82,16 +83,107 @@ class Metrics:
     def spec_invalid_count(self) -> int:
         return max(self.total_words - self.spec_valid_count, 0)
 
+    def evidence_problems(self) -> list[str]:
+        problems = list(self.warnings)
+        if self.format_version != 1:
+            problems.append(f"format_version is {self.format_version}, expected 1")
+        if self.total_words != TOTAL_WORDS:
+            problems.append(f"total_words is {self.total_words:,}, expected {TOTAL_WORDS:,}")
+        if not 0 <= self.spec_valid_count <= TOTAL_WORDS:
+            problems.append(f"spec_valid_count is outside 0..{TOTAL_WORDS}")
+        if set(self.per_tool) != set(TOOLS):
+            problems.append(f"per_tool keys must be exactly {list(TOOLS)!r}")
+        if self.ranking_worst_first != sorted(
+            self.per_tool, key=lambda name: self.per_tool[name].validity_agreement_micro
+        ):
+            problems.append("tool_ranking_worst_first does not match the reported agreement rates")
+        if len(self.ranking_worst_first) != len(set(self.ranking_worst_first)):
+            problems.append("tool_ranking_worst_first contains duplicates")
+        if set(self.ranking_worst_first) != set(TOOLS):
+            problems.append(f"tool_ranking_worst_first must contain exactly {list(TOOLS)!r}")
+        for name in TOOLS:
+            tool = self.per_tool.get(name)
+            if tool is not None:
+                problems.extend(_tool_metric_problems(tool, self.total_words))
+        present = [self.per_tool[name] for name in TOOLS if name in self.per_tool]
+        for label, values in (
+            ("text_tier_method", {tool.text_method for tool in present}),
+            ("text_tier_sample_size", {tool.text_sample_size for tool in present}),
+            ("text_tier_population", {tool.text_population for tool in present}),
+        ):
+            if len(values) > 1:
+                problems.append(f"per-tool {label} values disagree")
+        return _dedupe(problems)
 
-def _num(d: dict[str, Any], key: str, warnings: list[str], where: str, default: Any = 0) -> Any:
+    @property
+    def supports_sweep_evidence(self) -> bool:
+        return not self.evidence_problems()
+
+
+def _int_num(
+    d: dict[str, Any], key: str, warnings: list[str], where: str, default: int = 0
+) -> int:
     v = d.get(key, None)
     if v is None:
         warnings.append(f"{where}: missing '{key}'")
         return default
-    if not isinstance(v, (int, float)) or isinstance(v, bool):
-        warnings.append(f"{where}: '{key}' is not numeric ({type(v).__name__})")
+    if not isinstance(v, int) or isinstance(v, bool):
+        warnings.append(f"{where}: '{key}' is not an integer ({type(v).__name__})")
         return default
     return v
+
+
+def _float_num(
+    d: dict[str, Any], key: str, warnings: list[str], where: str, default: float = 0.0
+) -> float:
+    v = d.get(key, None)
+    if v is None:
+        warnings.append(f"{where}: missing '{key}'")
+        return default
+    if not isinstance(v, (int, float)) or isinstance(v, bool) or not math.isfinite(v):
+        warnings.append(f"{where}: '{key}' is not a finite number ({type(v).__name__})")
+        return default
+    return float(v)
+
+
+def _tool_metric_problems(tool: ToolMetrics, total_words: int) -> list[str]:
+    where = f"per_tool.{tool.name}"
+    problems: list[str] = []
+    if not 0 <= tool.validity_disagreements <= TOTAL_WORDS:
+        problems.append(f"{where}: validity disagreements are outside 0..{TOTAL_WORDS}")
+    for label, value in (
+        ("validity_agreement_micro", tool.validity_agreement_micro),
+        ("macro_validity_agreement", tool.macro_validity_agreement),
+        ("text_tier_agreement_micro", tool.text_agreement_micro),
+    ):
+        if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+            problems.append(f"{where}: {label} is outside 0..1")
+    if total_words == TOTAL_WORDS and 0 <= tool.validity_disagreements <= TOTAL_WORDS:
+        expected = (TOTAL_WORDS - tool.validity_disagreements) / TOTAL_WORDS
+        if not math.isclose(tool.validity_agreement_micro, expected, rel_tol=0.0, abs_tol=1e-15):
+            problems.append(f"{where}: validity_agreement_micro contradicts its disagreement count")
+    if tool.text_method not in {"exhaustive", "sampled"}:
+        problems.append(f"{where}: text_tier_method must be 'exhaustive' or 'sampled'")
+    for label, value in (
+        ("text_tier_disagreements_with_spec", tool.text_disagreements),
+        ("text_tier_sample_size", tool.text_sample_size),
+        ("text_tier_population", tool.text_population),
+    ):
+        if value < 0:
+            problems.append(f"{where}: {label} must be nonnegative")
+    if tool.text_sample_size > tool.text_population:
+        problems.append(f"{where}: text_tier_sample_size exceeds text_tier_population")
+    if tool.text_disagreements > tool.text_population:
+        problems.append(f"{where}: text disagreements exceed text_tier_population")
+    if tool.text_population > 0 and 0 <= tool.text_disagreements <= tool.text_population:
+        expected = (tool.text_population - tool.text_disagreements) / tool.text_population
+        if not math.isclose(tool.text_agreement_micro, expected, rel_tol=0.0, abs_tol=1e-15):
+            problems.append(f"{where}: text_tier_agreement_micro contradicts its counts")
+    return problems
+
+
+def _dedupe(items: list[str]) -> list[str]:
+    return list(dict.fromkeys(items))
 
 
 def load_metrics(path: Path) -> Loaded:
@@ -114,27 +206,27 @@ def load_metrics(path: Path) -> Loaded:
         where = f"per_tool.{name}"
         per_tool[name] = ToolMetrics(
             name=name,
-            validity_disagreements=int(_num(blob, "validity_disagreements_with_spec", warnings, where)),
-            validity_agreement_micro=float(_num(blob, "validity_agreement_micro", warnings, where)),
-            macro_validity_agreement=float(_num(blob, "macro_validity_agreement", warnings, where)),
-            text_disagreements=int(_num(blob, "text_tier_disagreements_with_spec", warnings, where)),
-            text_agreement_micro=float(_num(blob, "text_tier_agreement_micro", warnings, where)),
+            validity_disagreements=_int_num(
+                blob, "validity_disagreements_with_spec", warnings, where
+            ),
+            validity_agreement_micro=_float_num(blob, "validity_agreement_micro", warnings, where),
+            macro_validity_agreement=_float_num(blob, "macro_validity_agreement", warnings, where),
+            text_disagreements=_int_num(blob, "text_tier_disagreements_with_spec", warnings, where),
+            text_agreement_micro=_float_num(blob, "text_tier_agreement_micro", warnings, where),
             text_method=str(blob.get("text_tier_method", "unknown")),
-            text_sample_size=int(_num(blob, "text_tier_sample_size", warnings, where)),
-            text_population=int(_num(blob, "text_tier_population", warnings, where)),
+            text_sample_size=_int_num(blob, "text_tier_sample_size", warnings, where),
+            text_population=_int_num(blob, "text_tier_population", warnings, where),
         )
     ranking = data.get("tool_ranking_worst_first")
     if not isinstance(ranking, list) or not all(isinstance(x, str) for x in ranking):
         warnings.append("missing or malformed 'tool_ranking_worst_first'")
         ranking = sorted(per_tool, key=lambda n: per_tool[n].validity_agreement_micro)
-    total = int(_num(data, "total_words", warnings, "root", TOTAL_WORDS))
-    if total != TOTAL_WORDS:
-        warnings.append(f"total_words is {total:,}, expected {TOTAL_WORDS:,}")
+    total = _int_num(data, "total_words", warnings, "root", TOTAL_WORDS)
     return Loaded(
         Metrics(
-            format_version=int(_num(data, "format_version", warnings, "root", 0)),
+            format_version=_int_num(data, "format_version", warnings, "root"),
             total_words=total,
-            spec_valid_count=int(_num(data, "spec_valid_count", warnings, "root")),
+            spec_valid_count=_int_num(data, "spec_valid_count", warnings, "root"),
             per_tool=per_tool,
             ranking_worst_first=list(ranking),
             warnings=warnings,
@@ -142,6 +234,42 @@ def load_metrics(path: Path) -> Loaded:
         "",
         path,
     )
+
+
+def g1_evidence_problems(value: object) -> list[str]:
+    if not isinstance(value, dict):
+        return ["expected a JSON object at the top level"]
+    problems: list[str] = []
+    release = value.get("spec_release")
+    if not isinstance(release, str) or not release.strip():
+        problems.append("missing or malformed 'spec_release'")
+    checked = _g1_int(value, "tiling_files_checked", problems)
+    passed = _g1_int(value, "tiling_files_passed", problems)
+    allocated = _g1_int(value, "allocated", problems)
+    unallocated = _g1_int(value, "unallocated", problems)
+    if checked is not None and checked <= 0:
+        problems.append("tiling_files_checked must be positive")
+    if checked is not None and passed is not None and passed != checked:
+        problems.append("tiling_files_passed does not equal tiling_files_checked")
+    if allocated is not None and not 0 <= allocated <= TOTAL_WORDS:
+        problems.append(f"allocated is outside 0..{TOTAL_WORDS}")
+    if unallocated is not None and not 0 <= unallocated <= TOTAL_WORDS:
+        problems.append(f"unallocated is outside 0..{TOTAL_WORDS}")
+    if allocated is not None and unallocated is not None and allocated + unallocated != TOTAL_WORDS:
+        problems.append(f"allocated + unallocated does not equal {TOTAL_WORDS}")
+    if value.get("ret_test_word") != "0xd65f03c0":
+        problems.append("ret_test_word is not 0xd65f03c0")
+    if value.get("ret_test_passed") is not True:
+        problems.append("ret_test_passed is not true")
+    return problems
+
+
+def _g1_int(value: dict[str, Any], key: str, problems: list[str]) -> int | None:
+    raw = value.get(key)
+    if not isinstance(raw, int) or isinstance(raw, bool):
+        problems.append(f"missing or malformed '{key}'")
+        return None
+    return raw
 
 
 @dataclass
