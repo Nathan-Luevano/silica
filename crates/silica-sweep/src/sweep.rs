@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
 
 use sha2::{Digest, Sha256};
@@ -8,6 +7,7 @@ use silica_bitmap::Bitmap;
 
 use crate::isolate::run_batch_isolated;
 use crate::oracle::build_oracle;
+use crate::verify_batch::{execute_jobs, merge_batch_bits, verification_jobs, BatchJob};
 use crate::{shard_range, ShardRecord, DEFAULT_BATCH_BITS, ORACLES, TOTAL_BITS};
 
 pub fn worker_main(
@@ -56,106 +56,6 @@ pub fn worker_main(
 pub struct ShardOutcome {
     pub record: ShardRecord,
     pub oracle_bits: BTreeMap<String, Vec<u8>>,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct BatchJob {
-    oracle: &'static str,
-    start: u64,
-    end: u64,
-}
-
-fn batch_jobs(start: u64, end: u64) -> Vec<BatchJob> {
-    let mut jobs = Vec::new();
-    for &oracle in ORACLES.iter() {
-        let mut batch_start = start;
-        while batch_start < end {
-            let batch_end = (batch_start + DEFAULT_BATCH_BITS).min(end);
-            jobs.push(BatchJob {
-                oracle,
-                start: batch_start,
-                end: batch_end,
-            });
-            batch_start = batch_end;
-        }
-    }
-    jobs
-}
-
-fn execute_jobs<T, F>(jobs: &[BatchJob], worker_count: usize, run: &F) -> Result<Vec<T>, String>
-where
-    T: Send,
-    F: Fn(BatchJob) -> Result<T, String> + Sync,
-{
-    if worker_count == 0 {
-        return Err("worker count must be greater than zero".to_owned());
-    }
-    if jobs.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let next = AtomicUsize::new(0);
-    let threads = worker_count.min(jobs.len());
-    let mut indexed = Vec::new();
-    std::thread::scope(|scope| -> Result<(), String> {
-        let mut handles = Vec::with_capacity(threads);
-        for _ in 0..threads {
-            handles.push(scope.spawn(|| {
-                let mut local = Vec::new();
-                loop {
-                    let index = next.fetch_add(1, Ordering::Relaxed);
-                    let Some(&job) = jobs.get(index) else {
-                        break;
-                    };
-                    local.push((index, run(job)));
-                }
-                local
-            }));
-        }
-        for handle in handles {
-            let mut local = handle
-                .join()
-                .map_err(|_| "batch worker thread panicked".to_owned())?;
-            indexed.append(&mut local);
-        }
-        Ok(())
-    })?;
-
-    indexed.sort_unstable_by_key(|(index, _)| *index);
-    if indexed.len() != jobs.len() {
-        return Err(format!(
-            "batch scheduler returned {} results for {} jobs",
-            indexed.len(),
-            jobs.len()
-        ));
-    }
-    indexed
-        .into_iter()
-        .enumerate()
-        .map(|(expected, (actual, result))| {
-            if actual != expected {
-                return Err(format!(
-                    "batch scheduler result gap: expected {expected}, got {actual}"
-                ));
-            }
-            result
-        })
-        .collect()
-}
-
-fn merge_batch_bits(target: &mut [u8], target_bit: u64, source: &[u8], bit_count: u64) {
-    if target_bit.is_multiple_of(8) && bit_count.is_multiple_of(8) {
-        let byte_start = (target_bit / 8) as usize;
-        let byte_end = byte_start + (bit_count / 8) as usize;
-        target[byte_start..byte_end].copy_from_slice(source);
-        return;
-    }
-    for i in 0..bit_count {
-        if (source[(i / 8) as usize] >> (i % 8)) & 1 == 1 {
-            let bit = target_bit + i;
-            target[(bit / 8) as usize] |= 1 << (bit % 8);
-        }
-    }
 }
 
 fn build_shard_outcome(
@@ -233,11 +133,10 @@ fn sweep_shard_parallel(
 ) -> Result<ShardOutcome, String> {
     let started = Instant::now();
     let (start, end) = shard_range(shard_id);
-    let jobs = batch_jobs(start, end);
     let workers = std::thread::available_parallelism()
         .map(usize::from)
-        .unwrap_or(1)
-        .min(jobs.len());
+        .unwrap_or(1);
+    let jobs = verification_jobs(start, end, workers)?;
     let outcomes = execute_jobs(&jobs, workers, &|job| {
         run_batch_isolated(
             self_exe,
@@ -424,158 +323,13 @@ pub fn verify_shard_command(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::time::Duration;
-
     use super::*;
     use crate::isolate::BatchOutcome;
     use crate::SHARD_BITS;
 
-    fn small_jobs(count: usize) -> Vec<BatchJob> {
-        (0..count)
-            .map(|index| BatchJob {
-                oracle: "spec",
-                start: index as u64,
-                end: index as u64 + 1,
-            })
-            .collect()
-    }
-
-    #[test]
-    fn batch_jobs_cover_each_oracle_in_stable_order() {
-        let start = 7 * DEFAULT_BATCH_BITS;
-        let end = start + DEFAULT_BATCH_BITS * 2 + 17;
-        let jobs = batch_jobs(start, end);
-
-        assert_eq!(jobs.len(), ORACLES.len() * 3);
-        for (oracle_index, oracle) in ORACLES.iter().enumerate() {
-            let oracle_jobs = &jobs[oracle_index * 3..oracle_index * 3 + 3];
-            assert!(oracle_jobs.iter().all(|job| job.oracle == *oracle));
-            assert_eq!(oracle_jobs[0].start, start);
-            assert_eq!(oracle_jobs[0].end, start + DEFAULT_BATCH_BITS);
-            assert_eq!(oracle_jobs[1].start, start + DEFAULT_BATCH_BITS);
-            assert_eq!(oracle_jobs[1].end, start + DEFAULT_BATCH_BITS * 2);
-            assert_eq!(oracle_jobs[2].start, start + DEFAULT_BATCH_BITS * 2);
-            assert_eq!(oracle_jobs[2].end, end);
-        }
-    }
-
-    #[test]
-    fn batch_jobs_skip_empty_ranges() {
-        assert!(batch_jobs(42, 42).is_empty());
-    }
-
-    #[test]
-    fn executor_preserves_input_order_across_out_of_order_finishes() {
-        let jobs = small_jobs(12);
-        let results = execute_jobs(&jobs, 4, &|job| {
-            std::thread::sleep(Duration::from_millis((12 - job.start) % 4));
-            Ok(job.start * 10)
-        })
-        .unwrap();
-
-        assert_eq!(results, (0..12).map(|value| value * 10).collect::<Vec<_>>());
-    }
-
-    #[test]
-    fn executor_uses_multiple_threads_but_honors_cap() {
-        let jobs = small_jobs(18);
-        let active = AtomicUsize::new(0);
-        let peak = AtomicUsize::new(0);
-        let results = execute_jobs(&jobs, 3, &|job| {
-            let now = active.fetch_add(1, Ordering::SeqCst) + 1;
-            peak.fetch_max(now, Ordering::SeqCst);
-            std::thread::sleep(Duration::from_millis(5));
-            active.fetch_sub(1, Ordering::SeqCst);
-            Ok(job.start)
-        })
-        .unwrap();
-
-        assert_eq!(results.len(), jobs.len());
-        assert!(peak.load(Ordering::SeqCst) > 1);
-        assert!(peak.load(Ordering::SeqCst) <= 3);
-        assert_eq!(active.load(Ordering::SeqCst), 0);
-    }
-
-    #[test]
-    fn executor_does_not_spawn_more_threads_than_jobs() {
-        let jobs = small_jobs(2);
-        let calls = AtomicUsize::new(0);
-        let results = execute_jobs(&jobs, 100, &|job| {
-            calls.fetch_add(1, Ordering::SeqCst);
-            Ok(job.start)
-        })
-        .unwrap();
-
-        assert_eq!(results, vec![0, 1]);
-        assert_eq!(calls.load(Ordering::SeqCst), 2);
-    }
-
-    #[test]
-    fn executor_reports_errors_by_stable_job_order() {
-        let jobs = small_jobs(8);
-        let error = execute_jobs(&jobs, 8, &|job| -> Result<u64, String> {
-            if job.start == 2 {
-                std::thread::sleep(Duration::from_millis(10));
-                return Err("second-index-error".to_owned());
-            }
-            if job.start == 6 {
-                return Err("later-fast-error".to_owned());
-            }
-            Ok(job.start)
-        })
-        .unwrap_err();
-
-        assert_eq!(error, "second-index-error");
-    }
-
-    #[test]
-    fn executor_rejects_zero_workers() {
-        let error = execute_jobs(&small_jobs(1), 0, &|job| Ok(job.start)).unwrap_err();
-        assert_eq!(error, "worker count must be greater than zero");
-    }
-
-    #[test]
-    fn executor_accepts_no_jobs_without_calling_runner() {
-        let calls = AtomicUsize::new(0);
-        let results = execute_jobs(&[], 2, &|_: BatchJob| {
-            calls.fetch_add(1, Ordering::SeqCst);
-            Ok::<u64, String>(0)
-        })
-        .unwrap();
-
-        assert!(results.is_empty());
-        assert_eq!(calls.load(Ordering::SeqCst), 0);
-    }
-
-    #[test]
-    fn executor_turns_thread_panic_into_error() {
-        let error = execute_jobs(&small_jobs(2), 2, &|job| -> Result<u64, String> {
-            assert_ne!(job.start, 1, "intentional worker panic");
-            Ok(job.start)
-        })
-        .unwrap_err();
-
-        assert_eq!(error, "batch worker thread panicked");
-    }
-
-    #[test]
-    fn aligned_merge_copies_complete_bytes() {
-        let mut target = vec![0x55, 0x55, 0x55, 0x55];
-        merge_batch_bits(&mut target, 8, &[0xaa, 0x0f], 16);
-        assert_eq!(target, vec![0x55, 0xaa, 0x0f, 0x55]);
-    }
-
-    #[test]
-    fn unaligned_merge_sets_only_source_one_bits() {
-        let mut target = vec![0b0000_0010, 0];
-        merge_batch_bits(&mut target, 3, &[0b0000_0101], 3);
-        assert_eq!(target, vec![0b0010_1010, 0]);
-    }
-
     #[test]
     fn outcome_builder_keeps_oracle_order_counts_and_crashes() {
-        let jobs = batch_jobs(0, SHARD_BITS);
+        let jobs = verification_jobs(0, SHARD_BITS, 4).unwrap();
         let outcomes = jobs
             .iter()
             .map(|job| {
@@ -606,7 +360,7 @@ mod tests {
 
     #[test]
     fn outcome_builder_rejects_missing_batch_result() {
-        let jobs = batch_jobs(0, SHARD_BITS);
+        let jobs = verification_jobs(0, SHARD_BITS, 4).unwrap();
         let error = match build_shard_outcome(0, Instant::now(), &jobs, Vec::new()) {
             Ok(_) => panic!("missing batch result unexpectedly succeeded"),
             Err(error) => error,

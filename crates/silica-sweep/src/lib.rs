@@ -6,6 +6,7 @@ pub mod g4_validate;
 pub mod isolate;
 pub mod oracle;
 pub mod sweep;
+mod verify_batch;
 
 use serde::{Deserialize, Serialize};
 
