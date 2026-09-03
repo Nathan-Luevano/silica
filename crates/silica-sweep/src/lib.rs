@@ -2,6 +2,7 @@
 
 pub mod g4;
 pub mod g4_disasm;
+pub mod g4_validate;
 pub mod isolate;
 pub mod oracle;
 pub mod sweep;
