@@ -205,6 +205,16 @@ This is an independent high-throughput audit tool, not a replacement for
 completion. The verifier remains the authority and additionally checks metrics
 and sampled validity records against the bitmaps.
 
+Supplying both `--bitmaps artifacts/bitmaps` and `--sample-words WORDS` adds
+that bitmap-backed validity check to the same native corpus pass. `WORDS` is a
+text file with one decimal or `0x`-prefixed 32-bit word per line; this explicit
+handoff lets an independent verifier retain sole ownership of its deterministic
+sampling policy. For each word, the command reads the four bitmap bits, selects
+the genuine validity disagreements, and requires a matching `VALIDITY` record
+while streaming the corpus. The JSON summary then includes
+`validity_sample.checked`, `real_disagreements`, `matched_records`, and sorted
+`missing_words`; any missing word makes the command return nonzero.
+
 ## sweep/shards/<NNN>.json
 
 Shard completion record, one per shard, `NNN` zero-padded 0..255 (e.g.

@@ -70,6 +70,10 @@ enum Commands {
     G4ValidateCorpus {
         #[arg(long)]
         corpus: PathBuf,
+        #[arg(long)]
+        bitmaps: Option<PathBuf>,
+        #[arg(long = "sample-words")]
+        sample_words: Option<PathBuf>,
         #[arg(long, default_value_t = 0)]
         workers: usize,
         #[arg(long, default_value = "zstd")]
@@ -121,21 +125,36 @@ fn main() {
         }),
         Commands::G4ValidateCorpus {
             corpus,
+            bitmaps,
+            sample_words,
             workers,
             zstd,
-        } => silica_sweep::g4_validate::validate_corpus(&corpus, workers, &zstd).and_then(
-            |summary| {
+        } => {
+            let validation = match (bitmaps, sample_words) {
+                (None, None) => silica_sweep::g4_validate::validate_corpus(&corpus, workers, &zstd),
+                (Some(bitmaps), Some(sample_words)) => {
+                    silica_sweep::g4_validate::validate_corpus_with_sample(
+                        &corpus,
+                        workers,
+                        &zstd,
+                        &bitmaps,
+                        &sample_words,
+                    )
+                }
+                _ => Err("--bitmaps and --sample-words must be provided together".to_owned()),
+            };
+            validation.and_then(|summary| {
                 println!(
                     "{}",
                     serde_json::to_string(&summary).map_err(|e| e.to_string())?
                 );
-                if summary.problem.is_some() {
-                    Err("corpus schema validation failed".to_owned())
+                if summary.problem.is_some() || summary.sample_has_missing_words() {
+                    Err("corpus validation failed".to_owned())
                 } else {
                     Ok(())
                 }
-            },
-        ),
+            })
+        }
     };
 
     if let Err(e) = result {
