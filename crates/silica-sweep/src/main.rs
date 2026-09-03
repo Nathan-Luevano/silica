@@ -66,6 +66,15 @@ enum Commands {
         #[arg(long)]
         out: PathBuf,
     },
+    // native, multicore schema audit for the published G4 corpus
+    G4ValidateCorpus {
+        #[arg(long)]
+        corpus: PathBuf,
+        #[arg(long, default_value_t = 0)]
+        workers: usize,
+        #[arg(long, default_value = "zstd")]
+        zstd: PathBuf,
+    },
 }
 
 fn main() {
@@ -110,6 +119,23 @@ fn main() {
         } => silica_sweep::g4_disasm::run_disasm(&words, &spec_decode_table, &out).map(|n| {
             eprintln!("disasm: {n} words processed");
         }),
+        Commands::G4ValidateCorpus {
+            corpus,
+            workers,
+            zstd,
+        } => silica_sweep::g4_validate::validate_corpus(&corpus, workers, &zstd).and_then(
+            |summary| {
+                println!(
+                    "{}",
+                    serde_json::to_string(&summary).map_err(|e| e.to_string())?
+                );
+                if summary.problem.is_some() {
+                    Err("corpus schema validation failed".to_owned())
+                } else {
+                    Ok(())
+                }
+            },
+        ),
     };
 
     if let Err(e) = result {

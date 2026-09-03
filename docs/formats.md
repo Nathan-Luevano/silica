@@ -187,6 +187,24 @@ Produced alongside the corpus. Flat JSON object:
 - `text_tier_sample_size` / `text_tier_population` — int, required and
   meaningful when `text_tier_method == "sampled"`
 
+### Native corpus schema audit
+
+`silica-sweep g4-validate-corpus --corpus artifacts/disagreements` streams
+every compressed record through native JSON parsing and validates the same
+record-level contract above: format version, taxonomy category, exact oracle
+key set, and `0x`-prefixed word. Shard files are assigned deterministically
+from sorted paths across all available logical CPUs by default; `--workers N`
+pins a benchmark width. It prints one JSON summary containing `files`,
+`records_read`, `workers`, and the first problem in sorted-file order, and
+returns nonzero on malformed input. The command invokes the repository
+environment's existing `zstd` executable rather than adding another vendored
+decompression dependency; `--zstd PATH` selects an explicit binary.
+
+This is an independent high-throughput audit tool, not a replacement for
+`silica verify`. It deliberately does not update GOALS.yml or assert G4
+completion. The verifier remains the authority and additionally checks metrics
+and sampled validity records against the bitmaps.
+
 ## sweep/shards/<NNN>.json
 
 Shard completion record, one per shard, `NNN` zero-padded 0..255 (e.g.
