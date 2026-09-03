@@ -274,11 +274,12 @@ shard `N` (0..255) against all four exhaustive-tier oracles and:
 bitmap slices (`2**24` bits = 2 MiB each, not the full file) under
 `<scratch-dir>/bitmaps/<oracle>-<NNN>.bin` plus a shard record at
 `<scratch-dir>/sweep/shards/<NNN>.json`, without touching any real
-`artifacts/` output. This is what G2's verifier shells out to. Its independent
-top-level oracle batches run concurrently, capped by the machine's available
-logical CPUs; results are reassembled in canonical oracle/range order before
-counting and hashing. `run` keeps serial batches within each shard because its
-documented full-sweep usage already parallelizes independent shards externally.
+`artifacts/` output. This is what G2's verifier shells out to. It sizes each
+oracle's independent batches to the available logical CPU count, never exceeding
+the normal timeout-safe batch width, and runs at most that many concurrently.
+Results are reassembled in canonical oracle/range order before counting and
+hashing. `run` keeps serial batches within each shard because its documented
+full-sweep usage already parallelizes independent shards externally.
 
 ## artifacts/report/metrics.json
 
