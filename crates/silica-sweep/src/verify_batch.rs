@@ -9,22 +9,13 @@ pub(crate) struct BatchJob {
     pub end: u64,
 }
 
-fn aligned_batch_bits(start: u64, end: u64, workers: usize) -> Result<u64, String> {
+fn canonical_batch_bits(start: u64, end: u64, workers: usize) -> Result<u64, String> {
     if workers == 0 {
         return Err("worker count must be greater than zero".to_owned());
     }
-    let word_count = end
-        .checked_sub(start)
+    end.checked_sub(start)
         .ok_or_else(|| format!("invalid batch range: {start}..{end}"))?;
-    if word_count == 0 {
-        return Ok(DEFAULT_BATCH_BITS);
-    }
-
-    let timeout_batches = word_count.div_ceil(DEFAULT_BATCH_BITS);
-    let target_batches = (workers as u64).max(timeout_batches);
-    let raw_bits = word_count.div_ceil(target_batches);
-    let byte_aligned = raw_bits.div_ceil(8) * 8;
-    Ok(byte_aligned.clamp(8, DEFAULT_BATCH_BITS))
+    Ok(DEFAULT_BATCH_BITS)
 }
 
 pub(crate) fn verification_jobs(
@@ -32,7 +23,7 @@ pub(crate) fn verification_jobs(
     end: u64,
     workers: usize,
 ) -> Result<Vec<BatchJob>, String> {
-    let batch_bits = aligned_batch_bits(start, end, workers)?;
+    let batch_bits = canonical_batch_bits(start, end, workers)?;
     let mut jobs = Vec::new();
     for &oracle in ORACLES.iter() {
         let mut batch_start = start;
@@ -148,15 +139,15 @@ mod tests {
     }
 
     #[test]
-    fn thirty_two_workers_keep_thirty_two_jobs_per_oracle() {
+    fn worker_count_does_not_change_canonical_boundaries() {
         let jobs = verification_jobs(0, SHARD_BITS, 32).unwrap();
-        assert_eq!(jobs.len(), 32 * ORACLES.len());
+        assert_eq!(jobs.len(), 4 * ORACLES.len());
         for (oracle_index, oracle) in ORACLES.iter().enumerate() {
-            let oracle_jobs = &jobs[oracle_index * 32..oracle_index * 32 + 32];
+            let oracle_jobs = &jobs[oracle_index * 4..oracle_index * 4 + 4];
             assert!(oracle_jobs.iter().all(|job| job.oracle == *oracle));
             assert!(oracle_jobs
                 .iter()
-                .all(|job| job.end - job.start == SHARD_BITS / 32));
+                .all(|job| job.end - job.start == DEFAULT_BATCH_BITS));
         }
     }
 
@@ -187,14 +178,13 @@ mod tests {
     }
 
     #[test]
-    fn very_high_worker_count_keeps_nonempty_byte_sized_jobs() {
+    fn very_high_worker_count_cannot_refine_batch_boundaries() {
         let jobs = verification_jobs(100, 117, 1000).unwrap();
-        assert_eq!(jobs.len(), 3 * ORACLES.len());
+        assert_eq!(jobs.len(), ORACLES.len());
         for oracle_index in 0..ORACLES.len() {
-            let oracle_jobs = &jobs[oracle_index * 3..oracle_index * 3 + 3];
-            assert_eq!(oracle_jobs[0].end - oracle_jobs[0].start, 8);
-            assert_eq!(oracle_jobs[1].end - oracle_jobs[1].start, 8);
-            assert_eq!(oracle_jobs[2].end - oracle_jobs[2].start, 1);
+            let job = jobs[oracle_index];
+            assert_eq!(job.start, 100);
+            assert_eq!(job.end, 117);
         }
     }
 

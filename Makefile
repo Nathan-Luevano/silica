@@ -1,5 +1,8 @@
 .PHONY: check fmt lint test verify doctor hooks-test all
 
+# 0 uses every available logical CPU; override for a shared machine.
+SWEEP_JOBS ?= 0
+
 check:
 	micromamba run -p ./.venv cargo fmt --check
 	micromamba run -p ./.venv cargo clippy --workspace -- -D warnings
@@ -39,10 +42,10 @@ verify:
 all:
 	micromamba run -p ./.venv cargo build --release -p silica-sweep
 	micromamba run -p ./.venv python -m pysilica.cli compile-spec
-	for shard in $$(seq 0 255); do \
-		./target/release/silica-sweep run --shard $$shard \
-			--spec-decode-table artifacts/decode-table.bin --out artifacts; \
-	done
+	micromamba run -p ./.venv python scripts/run_shards.py \
+		--sweep-bin ./target/release/silica-sweep \
+		--decode-table artifacts/decode-table.bin --out artifacts \
+		--jobs $(SWEEP_JOBS)
 	./target/release/silica-sweep g4-tier1 --out artifacts \
 		--scratch artifacts/g4-scratch --sample-size 1000000
 	# convert artifacts/g4-scratch/tier2_candidates.json's reservoir
