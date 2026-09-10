@@ -10,6 +10,7 @@ and turns the differences into reproducible evidence.
 
 [![Rust](https://img.shields.io/badge/rust-CE422B?style=flat-square&logo=rust&logoColor=white)](Cargo.toml)
 [![Python](https://img.shields.io/badge/python-3.11-3776AB?style=flat-square&logo=python&logoColor=white)](pyproject.toml)
+[![PyPI](https://img.shields.io/pypi/v/silica-scope?style=flat-square&logo=pypi&logoColor=white&label=silica-scope)](https://pypi.org/project/silica-scope/)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE)
 [![Goals verified](https://img.shields.io/badge/goals%20verified-7%2F7-brightgreen?style=flat-square)](verification metadata)
 [![Encodings swept](https://img.shields.io/badge/encodings%20swept-4.3B%20%2F%204.3B-informational?style=flat-square)](docs/formats.md)
@@ -69,6 +70,33 @@ separate from the exhaustive validity figures.
 
 The sample is useful for locating normalization and presentation work; it does
 not claim exhaustive coverage of every textual rendering.
+
+## Explore the results
+
+The sweep engine produces a large research dataset. **[silica-scope](https://pypi.org/project/silica-scope/)**
+is the companion terminal app for making that dataset approachable. It opens a
+finished Silica artifact directory and lets you browse headline metrics, inspect
+the 256-shard encoding map, filter disagreements, look up any 32-bit word, and
+read the filing-ready reproducers.
+
+Install it from PyPI with Python 3.11 or newer:
+
+```bash
+pipx install silica-scope
+```
+
+Then run it from a Silica checkout or point it at an artifact directory:
+
+```bash
+silica-scope
+silica-scope /path/to/silica/artifacts
+silica-scope --report
+```
+
+`silica-scope` is a pure-Python reader with no native decoder dependencies. It
+does not launch the exhaustive sweep, and it handles the repository's smaller
+published artifact set gracefully. See the [terminal reader guide](tui/README.md)
+for the panes, keyboard controls, and artifact discovery options.
 
 ## How it works
 
