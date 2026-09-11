@@ -164,7 +164,7 @@ Silica currently covers base A64 and Advanced SIMD decoding. SVE, SVE2, SME,
 A32/T32, RISC-V, assembler round trips, and general execution testing are outside
 the v1 study.
 
-The closest inspiration is [Sandsifter](https://github.com/trailofbits/sandsifter),
+The closest inspiration is [Sandsifter](https://github.com/Battelle/sandsifter),
 which explores x86's variable-length instruction space. Silica applies the same
 spirit of systematic skepticism to AArch64, where fixed-width encodings and an
 independent specification allow a complete, adjudicated comparison.
