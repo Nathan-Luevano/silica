@@ -29,7 +29,7 @@ extern "C" {
 }
 
 // proves the llvm-c disassembler links and works in-process, before the
-// sweep engine is built around it (architecture notes §3.1).
+// sweep engine is built around it.
 pub fn disasm_one(word: u32) -> Option<String> {
     unsafe {
         LLVMInitializeAArch64TargetInfo();

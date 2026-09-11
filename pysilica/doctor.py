@@ -63,8 +63,8 @@ def _conda_prefix() -> Path:
 
 
 def check_pkgconfig_lib(name: str) -> Check:
-    # capstone and unicorn are linked in-process from rust (architecture notes §3.1),
-    # never imported from python. checking headers, not a python binding.
+    # Capstone and Unicorn are linked in-process from Rust, so check their
+    # native headers rather than Python bindings.
     header = _conda_prefix() / "include" / name
     result = subprocess.run(
         ["pkg-config", "--exists", name],

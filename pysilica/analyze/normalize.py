@@ -314,7 +314,7 @@ def normalize_spec_alias(
     # hold. Clauses needing bitfield/immediate values, function calls, or
     # cond-code-set membership not visible in normalized text (UInt(...),
     # MoveWidePreferred(...), SysOp(...), A == '0', !(cond IN {...}), etc.)
-    # are left unverified -- conservative per architecture notes sec7, not a gap.
+    # are left unverified to avoid applying an alias on incomplete evidence.
     if spec_aliases is None:
         spec_aliases = load_spec_aliases()
 

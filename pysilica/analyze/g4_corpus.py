@@ -16,10 +16,9 @@ ORACLES = ("capstone", "llvm", "spec", "unicorn")
 # among classify_disagreement's possible outputs (EQUIVALENT, OPERAND,
 # NORMALIZATION_UNCERTAIN, VALIDITY-for-missing-text), pick the least
 # confident one across every oracle pair as the record's category -
-# same "when unsure, don't collapse" conservatism as normalize.py itself
-# (architecture notes §7.2). MNEMONIC/ALIAS/FORMATTING aren't produced by
-# classify_disagreement as it exists today, so they never appear here -
-# not reinventing that logic, just using it as-is (see development notes).
+# same "when unsure, don't collapse" conservatism as normalize.py itself.
+# MNEMONIC/ALIAS/FORMATTING aren't produced by classify_disagreement as it
+# exists today, so they never appear here.
 _PRIORITY = {"NORMALIZATION_UNCERTAIN": 3, "VALIDITY": 2, "OPERAND": 1, "EQUIVALENT": 0}
 
 # unicorn's Oracle::disassemble() always returns the literal "<valid>"

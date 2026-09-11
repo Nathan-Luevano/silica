@@ -168,7 +168,7 @@ def verify_g4_disagreement_corpus() -> VerifyResult:
     if metrics["validity_tier_exhaustive"] is not True:
         return VerifyResult(
             "G4", False,
-            {"reason": "validity_tier_exhaustive must be true - architecture notes §14 risk #2 fallback requires the bitmap-derived VALIDITY tier to be exhaustive, not sampled"},
+            {"reason": "validity_tier_exhaustive must be true"},
             {},
         )
 

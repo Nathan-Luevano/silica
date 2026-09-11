@@ -12,7 +12,6 @@ and turns the differences into reproducible evidence.
 [![Python](https://img.shields.io/badge/python-3.11-3776AB?style=flat-square&logo=python&logoColor=white)](pyproject.toml)
 [![PyPI](https://img.shields.io/pypi/v/silica-scope?style=flat-square&logo=pypi&logoColor=white&label=silica-scope)](https://pypi.org/project/silica-scope/)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE)
-[![Goals verified](https://img.shields.io/badge/goals%20verified-7%2F7-brightgreen?style=flat-square)](verification metadata)
 [![Encodings swept](https://img.shields.io/badge/encodings%20swept-4.3B%20%2F%204.3B-informational?style=flat-square)](docs/formats.md)
 
 </div>
@@ -157,8 +156,7 @@ micromamba run -p ./.venv silica verify
 ```
 
 Pinned decoder versions and a freshly recomputed result hash make separate runs
-comparable. The verification goals and their current status are recorded in
-[verification metadata](verification metadata).
+comparable.
 
 ## Scope
 

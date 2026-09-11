@@ -10,8 +10,7 @@ from pysilica.model import AliasRef, Box, InstructionForm
 
 EXPECTED_COMMIT_ID = "2026-06_rel"
 DECODE_SECTIONS = ("Decode", "Postdecode")
-# architecture notes §1.1 non-goals: "No SVE / SVE2 / SME... Base A64 plus Advanced
-# SIMD only." "mortlach"/"mortlach2" are ARM's internal codenames for SME/
+# "mortlach"/"mortlach2" are Arm's internal codenames for SME/
 # SME2 in this XML release (confirmed by content: ZA tile regs, MOPA/MOPS
 # outer-product instructions, MOVA tile-to-vector) - not obvious from the
 # name alone, so allowlisting known-good classes rather than blocklisting
@@ -67,7 +66,7 @@ def parse_boxes(regdiagram: ET.Element) -> tuple[Box, ...]:
 
 
 def tiling_ok(boxes: tuple[Box, ...]) -> bool:
-    # free invariant, architecture notes §5.2: widths sum to 32, no gap, no overlap
+    # Widths must sum to 32 with no gaps or overlap.
     ordered = sorted(boxes, key=lambda b: -b.hibit)
     expect_hibit = 31
     for box in ordered:
@@ -144,8 +143,7 @@ def parse_file(path: str) -> ParsedFile | None:
             continue
         boxes = parse_boxes(regdiagram)
         ok = tiling_ok(boxes)
-        # tiling is a parser-correctness check (architecture notes §5.2's "free
-        # invariant") and applies regardless of scope - an SVE file with a
+        # Tiling is a parser-correctness check and applies regardless of scope. An SVE file with a
         # malformed regdiagram is still a parser bug worth catching, even
         # though its forms never enter the decode tree below.
         tilings.append(TilingCheck(file=path, iclass_id=iclass.get("id", ""), ok=ok))

@@ -25,7 +25,7 @@ spec_release     UTF-8, spec_release_len bytes   (e.g. "ISA_A64_xml_A_profile-20
 form_count       u32
 forms[form_count]:
   psname_len      u32
-  psname          UTF-8 bytes                     (the decode-tree key, architecture notes §5.4)
+  psname          UTF-8 bytes                     (the decode-tree key)
   encoding_names_len  u32
   encoding_names  UTF-8 bytes, "|"-joined <encoding name> values sharing this psname
   mnemonic_len    u32
@@ -94,7 +94,7 @@ Produced by the P1 spec-compiler run. Flat JSON object, required keys:
 - `ret_test_passed` — bool
 
 Extra keys, not required by `verify_g1_spec_oracle` but written for
-transparency per architecture notes §5.3:
+transparency:
 
 - `decode_time_undefined_forms` — int, count of `type="instruction"` files
   whose `<pstext section="Decode">` or `section="Postdecode"` text contains
@@ -137,7 +137,7 @@ Record schema (`format_version: 1`):
 }
 ```
 
-- `category` — one of the architecture notes §7 taxonomy values: `VALIDITY`,
+- `category` — one of the supported taxonomy values: `VALIDITY`,
   `MNEMONIC`, `OPERAND`, `ALIAS`, `FORMATTING`, `NORMALIZATION_UNCERTAIN`,
   `CRASH`. `EQUIVALENT` (from `normalize.classify_disagreement`) never
   appears here — an equivalent pair isn't a disagreement, it's resolved,
@@ -160,13 +160,12 @@ Record schema (`format_version: 1`):
   are for classifying *which* words and getting them into the same corpus
   as everything else.
 
-**Exhaustiveness scope, stated plainly per architecture notes §14 risk #2's
-fallback:** `VALIDITY`-category coverage is exhaustive — computable
+**Exhaustiveness scope:** `VALIDITY`-category coverage is exhaustive — computable
 directly from the four already-swept bitmaps for every one of 2^32 words,
 no sampling. Text-level categories (`MNEMONIC`/`OPERAND`/`ALIAS`/
 `FORMATTING`/`NORMALIZATION_UNCERTAIN`) require actually disassembling a
 word through all four oracles, which the validity-only sweep did not
-capture (architecture notes §6: "do not store 4.3 billion decode strings"). If the
+capture. If the
 implementation cannot exhaustively re-disassemble every all-four-valid
 word in reasonable time, it MUST state the actual sampling method and
 denominator used for text-tier categories in `g4_metrics.json` (see
@@ -201,8 +200,7 @@ environment's existing `zstd` executable rather than adding another vendored
 decompression dependency; `--zstd PATH` selects an explicit binary.
 
 This is an independent high-throughput audit tool, not a replacement for
-`silica verify`. It deliberately does not update verification metadata or assert G4
-completion. The verifier remains the authority and additionally checks metrics
+`silica verify`. The verifier additionally checks metrics
 and sampled validity records against the bitmaps.
 
 Supplying both `--bitmaps artifacts/bitmaps` and `--sample-words WORDS` adds
@@ -238,9 +236,8 @@ exactly, no gap, no overlap. Flat JSON object:
 ```
 
 - `oracles` — always exactly `["capstone", "llvm", "spec", "unicorn"]`, this
-  fixed alphabetical order, matching architecture notes §6's exhaustive tier (objdump
-  excluded per the binutils-lacks-aarch64-target finding recorded in
-  development notes; ghidra is sampled tier, never shard-swept this way).
+  fixed alphabetical order. Ghidra is sampled tier and is never shard-swept
+  this way.
 - `valid_counts[oracle]` — count of the `2**24` words in this shard's range
   that oracle classified valid. Must equal the popcount of that oracle's
   bitmap over exactly this shard's byte range (`bitmaps/<oracle>.bin` bytes
@@ -248,13 +245,11 @@ exactly, no gap, no overlap. Flat JSON object:
 - `crash_count` — words in this shard where invoking that oracle crashed
   (segfault, panic, timeout) rather than returning valid/invalid.
   `untriaged_crash_count` starts equal to `crash_count` and is decremented as
-  P4's triage classifies each crash; a shard may not be `"status":
-  "complete"` while `untriaged_crash_count > 0` (architecture notes §9's "no shard
-  marked complete with an untriaged crash count").
+  triage classifies each crash; a shard may not be `"status": "complete"`
+  while `untriaged_crash_count > 0`.
 - `content_hash` — sha256 hex of the four oracles' bitmap byte ranges for
   `[start // 8, end // 8)`, concatenated in the `oracles` field's order
-  (capstone, then llvm, then spec, then unicorn). This is what "re-running a
-  shard reproduces its recorded hash" (architecture notes §9) checks: re-run the
+  (capstone, then llvm, then spec, then unicorn). To check reproducibility, re-run the
   shard, recompute this same hash from the fresh output, compare.
 - `status` — `"complete"` or `"crashed"` (shard-level abort, distinct from a
   per-word crash counted in `crash_count`).
@@ -284,8 +279,7 @@ comes from running independent shards in parallel, not changing those boundaries
 ## artifacts/report/metrics.json
 
 G5's published output: per-tool agreement against the spec oracle,
-macro and micro, honest denominators, worst tool first (architecture notes §32,
-P5). Flat JSON object:
+macro and micro, honest denominators, worst tool first. Flat JSON object:
 
 - `format_version` — int, `1`
 - `total_words` — int, must be `2**32`
@@ -321,16 +315,14 @@ P5). Flat JSON object:
     re-deriving a second, possibly-inconsistent claim here).
 - `tool_ranking_worst_first` — array of the three tool names, sorted
   ascending by `validity_agreement_micro` (lowest agreement — i.e. worst
-  — first). This is the "lead with the least flattering framing"
-  requirement (architecture notes §32) made mechanically checkable: the report's
+  — first). This ordering is mechanically checked: the report's
   own ordering must match a straight sort of its own numbers, not a
   cherry-picked one.
 
 ## artifacts/reproducers/*.md
 
 G6's output: at least 10 minimal, filing-ready writeups, one per file,
-each documenting one real disagreement (architecture notes §33, "suitable for
-filing upstream" — Nathan files them by hand, this project does not).
+each documenting one real disagreement. They are filed upstream manually.
 "Minimal" here means exactly one 32-bit encoding and nothing
 extraneous, not a reduced-from-something-larger test case — a single
 instruction word has no smaller reproducible unit. Each file is
@@ -365,8 +357,8 @@ prose may follow it):
 
 ## artifacts/result_hash.txt and G7's reproducibility scope
 
-G7's statement is "full run reproducible from clean checkout by one
-command, pinned tools, stable result hash" (architecture notes §34). A literal
+G7 checks that the full run is reproducible from a clean checkout using one
+command, pinned tools, and a stable result hash. A literal
 re-run of the entire 2**32-word, four-oracle sweep on every `silica
 verify` invocation is not practical (the real sweep took many hours;
 see G2/G4's development log entries) and G2 already covers *that* kind of

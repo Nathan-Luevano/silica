@@ -15,7 +15,7 @@ def test_spec_alias_mov_orr() -> None:
     # "Rn == '11111' && !MoveWidePreferred(sf, N, imms, immr)" (log_imm form)
     # and "shift == '00' && imm6 == '000000' && Rn == '11111'" (log_shift
     # form). Both have a clause (a function call, a non-register field) this
-    # engine cannot verify from text, so per architecture notes sec7 rule 2 it must
+    # engine cannot verify from text, so it must
     # decline the whole alias rather than collapse on the Rn == '11111'
     # clause alone -- that partial check is exactly the bug this suite is
     # pinning against (see test_spec_alias_bfm_bfc_requires_full_condition).

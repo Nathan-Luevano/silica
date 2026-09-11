@@ -8,7 +8,7 @@
 // Uses in-process catch_unwind isolation (decode_isolated/disassemble_isolated)
 // rather than the full process-per-batch isolation in isolate.rs: these words
 // already decoded successfully as valid in the original sweep with zero
-// crashes recorded across all 256 shards (development notes), so the risk profile
+// crashes recorded across all 256 shards, so the risk profile
 // here is materially different from the raw exhaustive sweep. A genuine
 // native crash on one of these words would abort this whole batch -- an
 // acceptable, stated tradeoff for what is a measurement/sampling pass, not

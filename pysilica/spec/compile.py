@@ -62,8 +62,7 @@ def compile_spec(xml_dir: str | os.PathLike[str], spec_release: str) -> CompileR
         tiling_files_checked += 1
         if all(t.ok for t in pf.tilings):
             tiling_files_passed += 1
-        # pf.forms is already scope-filtered in mra.parse_file (architecture notes
-        # §1.1: no SVE/SVE2/SME in v1) - out-of-scope files still get
+        # pf.forms is already scope-filtered in mra.parse_file. Out-of-scope files still get
         # box-tiling checked above, just never feed the decode tree.
         forms.extend(pf.forms)
 

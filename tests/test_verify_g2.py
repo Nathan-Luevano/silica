@@ -59,7 +59,7 @@ def test_fails_with_boundary_gap(tmp_path, monkeypatch):
 
 def test_fails_with_untriaged_crash_on_complete_shard(tmp_path, monkeypatch):
     # deliberately broken fixture: a shard claims "complete" while still
-    # carrying an untriaged crash - architecture notes §9 forbids this combination.
+    # carrying an untriaged crash.
     monkeypatch.chdir(tmp_path)
     _write_shard_records(tmp_path, override={"untriaged_crash_count": 3})
     result = verify_g2_exhaustive_coverage()

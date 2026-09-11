@@ -55,8 +55,7 @@ def _validity_stats(tool: str, spec_mm: mmap.mmap) -> tuple[int, float, float]:
 
 def _text_tier_disagreements() -> dict[str, int]:
     # streams the corpus once, one shard file at a time, one line at a
-    # time - never materializes it (see the G4 OOM incident, development notes
-    # ~07ac606). counts all three tools in the same pass.
+    # time. Counts all three tools in the same pass.
     counts = {tool: 0 for tool in TOOLS}
     for f in _shard_files():
         for r in _iter_shard_file_records(f):

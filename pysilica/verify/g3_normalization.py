@@ -13,8 +13,7 @@ REQUIRED_COUNT_KEYS = {"total_comparisons", "collapsed_disagreements", "rule_cou
 
 
 def _rule_has_dedicated_test(rule_name: str, test_sources: str) -> bool:
-    # a rule "lands with a test pinning its exact behavior" (architecture notes §7
-    # rule 1) if some test file's content actually names it - cheap but
+    # A rule has a dedicated check if some test file actually names it. This is cheap but
     # real: catches a rule added to rule_counts with no test written for it.
     needle = rule_name.replace("_", "")
     haystack = re.sub(r"[^a-z0-9]", "", test_sources.lower())
@@ -50,15 +49,14 @@ def verify_g3_normalization() -> VerifyResult:
     if counts["total_comparisons"] <= 0:
         return VerifyResult("G3", False, {"reason": "total_comparisons must be > 0"}, measured)
 
-    # architecture notes §7: "Alias handling uses the spec's <alias_list>, never
-    # hand-written lists." operationalized as: alias collapsing must be a
+    # Alias handling uses the spec's <alias_list>, so alias collapsing must be a
     # distinct, separately-counted rule - not folded silently into
     # formatting - so a missing alias rule is visible here, not hidden.
     has_alias_rule = any("alias" in name.lower() for name in rule_counts)
     if not has_alias_rule:
         return VerifyResult(
             "G3", False,
-            {"reason": "no rule_counts entry matching 'alias' - §7 requires spec-alias_list-driven alias handling as its own tracked rule"},
+            {"reason": "no rule_counts entry matching 'alias'"},
             measured,
         )
 

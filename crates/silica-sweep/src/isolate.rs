@@ -12,8 +12,7 @@ use std::time::{Duration, Instant};
 // ~290s. 15s was timing out on every single unicorn batch regardless of any
 // real hang, triggering needless bisection at every level. 600s gives ~2x
 // margin over the measured legitimate worst case while still bounding a
-// truly infinite hang (which is what this exists to catch in the first
-// place -- see development notes for the real one found running the actual sweep).
+// truly infinite hang.
 const BATCH_TIMEOUT: Duration = Duration::from_secs(600);
 
 // spawn + poll instead of Command::status(), so a hung child (alive, not

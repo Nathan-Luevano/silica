@@ -14,10 +14,7 @@ check:
 	micromamba run -p ./.venv python scripts/no_docstrings.py
 	! grep -rnE '^\s*(///|//!)' crates/
 	micromamba run -p ./.venv python scripts/check_hooks.py
-	micromamba run -p ./.venv python scripts/check_verifier_hashes.py
-	# one verifier run supplies both the real G1-G7 gate and the development log
-	# drift observation. Running them separately rereads the full G4 corpus.
-	micromamba run -p ./.venv python scripts/check_development log_drift.py --gate
+	micromamba run -p ./.venv python -m pysilica.cli verify
 
 doctor:
 	micromamba run -p ./.venv python -m pysilica.cli doctor
@@ -25,20 +22,13 @@ doctor:
 verify:
 	micromamba run -p ./.venv python -m pysilica.cli verify
 
-# full pipeline from a clean checkout, in order (G7). Not run as part of
-# `make check` - the 256-shard sweep alone takes many hours (see G2/G4
-# development log entries); this documents the real one-command shape a human
-# would actually invoke. Each step's inputs/outputs are the same ones
-# every prior goal's verifier already checks against.
-#
 # the g4-tier1 -> g4-disasm handoff needs one conversion this recipe
 # doesn't spell out: g4-tier1's reservoir sample lands in
 # <scratch>/tier2_candidates.json (see g4.rs), and g4-disasm wants a
 # plain word-list file - extracting one from the other is a few lines
 # of jq/python, omitted here rather than guessed at and presented as
-# real. the three numeric g4_run flags are this project's actual
-# measured values (development notes, 2026-08-21 f9a0f56) - a fresh run would
-# read them off g4-tier1's own stderr summary instead of hardcoding.
+# real. A fresh run should read the three numeric g4_run flags from
+# g4-tier1's summary instead of relying on the values below.
 all:
 	micromamba run -p ./.venv cargo build --release -p silica-sweep
 	micromamba run -p ./.venv python -m pysilica.cli compile-spec

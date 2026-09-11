@@ -15,8 +15,7 @@ def test_fails_closed_with_no_artifacts(tmp_path, monkeypatch):
 
 def test_fails_on_broken_tiling_fixture(tmp_path, monkeypatch):
     # deliberately broken fixture: metrics claim a mismatch between files
-    # checked and files passed, per architecture notes §9's "ships with a
-    # deliberately broken fixture" requirement.
+    # checked and files passed.
     monkeypatch.chdir(tmp_path)
     os.makedirs("artifacts")
     (tmp_path / "artifacts" / "decode-table.bin").write_bytes(b"\x00")

@@ -669,14 +669,3 @@ def test_sweep_evidence_needs_more_than_one_surviving_shard(full_artifacts: Path
     # one shard record out of 256 does not support "all 2^32, not sampled"
     assert len(loaded.shards) == 1
     assert not loaded.has_sweep_evidence
-
-
-def test_a_stray_goals_file_is_not_an_artifacts_tree(tmp_path: Path) -> None:
-    # verification metadata is SILICA's own build-process tracking, unrelated to what
-    # silica-scope reads - scope never looks at it, so a stray copy sitting
-    # next to an empty artifacts/ dir must not count as "there's data here".
-    from silica_scope import session as session_mod
-
-    (tmp_path / "verification metadata").write_text("goals: []\n")
-    loaded = session_mod.load(tmp_path / "artifacts")
-    assert not loaded.has_anything
