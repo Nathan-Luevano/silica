@@ -119,7 +119,7 @@ keyboard controls and artifact discovery.
 
 ```mermaid
 flowchart LR
-    XML["Arm XML specification"] --> SPEC["compiled spec oracle"]
+    XML["Arm XML encoding diagrams"] --> SPEC["compiled allocation matcher"]
     SPEC --> SWEEP["parallel 32-bit sweep"]
     CAP["Capstone"] --> SWEEP
     LLVM["LLVM"] --> SWEEP
@@ -127,7 +127,7 @@ flowchart LR
     SWEEP --> MAP["validity bitmaps"]
     MAP --> DIFF["exhaustive XOR comparison"]
     DIFF --> CORPUS["classified disagreement corpus"]
-    CORPUS --> OUT["metrics · reproducers · result hash"]
+    CORPUS --> OUT["metrics · examples · result hash"]
 ```
 
 The high-volume path is written in Rust and calls each decoder in-process. It
@@ -135,9 +135,18 @@ stores one bit per encoding per oracle, which keeps the exhaustive comparison
 compact and makes disagreement a direct bitmap operation. Crashes are bisected
 to the exact instruction word.
 
-Python handles specification compilation, normalization, reporting, and the
-independent verification layer. Artifact schemas, sampling rules, and known
-limitations are documented in [docs/formats.md](docs/formats.md).
+Python handles XML compilation, normalization, reporting, and verification.
+Artifact schemas and sampling rules are documented in
+[docs/formats.md](docs/formats.md). The source of each headline value is:
+
+| Claim | Artifact | Recomputed by |
+|---|---|---|
+| XML allocation count | `artifacts/g1_metrics.json` | G1 |
+| Exhaustive validity differences | four validity bitmaps | G2 and G5 |
+| Sample category counts | `artifacts/g4_metrics.json` | G4 |
+| Pairwise agreement percentages | `artifacts/report/metrics.json` | G5 |
+| Ten selected example records | `artifacts/reproducers/*.md` | G6 |
+| Published artifact digest | `artifacts/result_hash.txt` | G7 |
 
 ## Reproducing the work
 
@@ -152,40 +161,47 @@ micromamba run -p ./.venv silica doctor
 Arm's XML specification is not vendored because of its license. `silica doctor`
 reports where Silica expects to find it and any other missing prerequisites.
 
-To run the full pipeline from a prepared checkout:
+The checked-in artifacts can be inspected without rerunning the sweep:
 
 ```bash
-make all
+silica-scope artifacts
 ```
 
-This is a full 2³² sweep, not a quick smoke test. It produces the compiled
-oracle, shard records, validity bitmaps, disagreement corpus, published metrics,
-reproducers, and a stable SHA-256 result hash.
+The `make all` recipe lists the stages for a fresh run, but it is not currently
+a turnkey reproduction command. Its G4 handoff still requires converting the
+reservoir JSON into a word list, and three corpus totals are passed as explicit
+arguments. The Makefile calls out that gap directly. A fresh publication run
+should not be represented as reproduced until that handoff is automated and
+the totals flow from generated output.
 
-## Trust, but verify
+## Verification
 
-Seven independent verifiers recompute the project's claims from raw artifacts.
-They do not trust a generated summary, and each verifier has a fixture proving
-that it detects the defect it guards against. There is no skipped or provisional
-state.
+The `silica verify` command runs seven repository-owned gates. They check XML
+compilation metadata, shard coverage, normalization evidence, corpus structure,
+published metrics, example records, and the artifact hash. Calling them gates
+is deliberate: they provide consistency checks, but they are not independent
+implementations or external confirmation of decoder bugs.
 
 ```bash
 micromamba run -p ./.venv silica verify
 ```
 
-Pinned decoder versions and a freshly recomputed result hash make separate runs
-comparable.
+G4 and G5 stream the large disagreement corpus and validity bitmaps, so this is
+not a quick documentation check. Run it before publishing or changing numeric
+claims. For ordinary README edits, review the cited JSON artifacts and defer the
+full verifier until the change is ready for publication.
 
 ## Scope
 
-Silica currently covers base A64 and Advanced SIMD decoding. SVE, SVE2, SME,
-A32/T32, RISC-V, assembler round trips, and general execution testing are outside
-the v1 study.
+The XML matcher includes base A64 and Advanced SIMD encoding patterns after the
+compiler's scope filter. It excludes SVE, SVE2, SME, and other classes listed in
+`artifacts/g1_metrics.json`. A32/T32, RISC-V, assembler round trips, semantic
+equivalence, and general execution correctness are outside this study.
 
 The closest inspiration is [Sandsifter](https://github.com/Battelle/sandsifter),
-which explores x86's variable-length instruction space. Silica applies the same
-spirit of systematic skepticism to AArch64, where fixed-width encodings and an
-independent specification allow a complete, adjudicated comparison.
+which explores x86's variable-length instruction space. Silica focuses on the
+finite A64 word space and publishes the raw classifications needed for later
+family-by-family adjudication.
 
 ---
 
