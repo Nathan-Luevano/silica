@@ -2,11 +2,11 @@
 
 # SILICA
 
-**A complete map of where AArch64 decoders disagree with the architecture.**
+**An exhaustive comparison of A64 instruction-allocation decisions.**
 
-Silica walks every one of the 4,294,967,296 possible A64 instruction words,
-compares Capstone, LLVM, and Unicorn with Arm's machine-readable specification,
-and turns the differences into reproducible evidence.
+Silica checks every one of the 4,294,967,296 possible A64 instruction words.
+It compares whether Capstone, LLVM, Unicorn, and a table compiled from Arm's
+XML encoding diagrams accept each word.
 
 [![Rust](https://img.shields.io/badge/rust-CE422B?style=flat-square&logo=rust&logoColor=white)](Cargo.toml)
 [![Python](https://img.shields.io/badge/python-3.11-3776AB?style=flat-square&logo=python&logoColor=white)](pyproject.toml)
@@ -18,41 +18,42 @@ and turns the differences into reproducible evidence.
 
 ---
 
-A disassembler saying “valid” is easy. Knowing whether it is right is harder.
-Most differential testing can reveal that tools disagree, but it cannot identify
-the correct answer without an independent oracle. Silica uses Arm's XML release
-as that oracle.
+A decoder and an encoding diagram do not answer exactly the same question.
+Capstone and LLVM decode instructions, Unicorn attempts execution, and Silica's
+XML-derived table matches the fixed bits in Arm's encoding diagrams. Comparing
+them is useful, but a mismatch is not automatically a decoder bug.
 
-A64 makes an unusually thorough experiment possible: instructions are exactly
-32 bits wide, so the entire encoding space is finite and practical to enumerate.
-Silica takes advantage of that property. The validity results below are not an
-estimate or a fuzzing campaign; every possible word was checked.
+A64 instructions are 32 bits wide, so the allocation comparison can cover the
+entire input space. The validity counts below are exhaustive for the pinned
+versions and configuration. The instruction-text analysis is sampled.
 
-## What Silica found
+## Results at a glance
 
-These results use `ISA_A64_xml_A_profile-2026-06_mc` (Armv9.6-A). The sweep was
-split into 256 independently verified shards covering all 2³² encodings.
+These artifacts use `ISA_A64_xml_A_profile-2026-06_mc` and 256 shards covering
+all 2³² words.
 
-| Result | Count | Share of the full space |
+| XML-derived allocation result | Count | Share |
 |---|---:|---:|
-| Allocated by the Arm specification | 1,799,435,776 | 41.9% |
-| Unallocated by the Arm specification | 2,495,531,520 | 58.1% |
-| Validity disagreements found | 723,801,678 | 16.9% |
-| Minimal upstream-ready reproducers | 10 | — |
+| Matches an in-scope encoding pattern | 1,799,435,776 | 41.9% |
+| Matches no in-scope encoding pattern | 2,495,531,520 | 58.1% |
 
-Agreement with the specification on whether an encoding is valid:
+Across the four validity bitmaps, 723,801,678 words have at least one differing
+classification. This is 16.9% of the full word space. It is a disagreement
+count, not a count of confirmed bugs.
 
-| Decoder | Agreement | Visual |
-|---|---:|---|
-| Capstone | 84.8% | `█████████████████████████░░░░░` |
-| LLVM | 87.6% | `██████████████████████████░░░░` |
-| Unicorn | 88.3% | `██████████████████████████░░░░` |
+Pairwise agreement with the XML-derived allocation bitmap:
 
-The large validity gap has identifiable causes. Unicorn tests validity by
-executing an instruction and observing traps, while the other oracles decode
-without execution. A small number of regions are also affected by decode-time
-`UNDEFINED` conditions that the compiled specification oracle does not evaluate.
-Silica records these limitations instead of smoothing them out of the result.
+| Tool | Agreement |
+|---|---:|
+| Capstone | 84.8% |
+| LLVM | 87.6% |
+| Unicorn | 88.3% |
+
+These percentages do not rank decoder correctness. In particular, the compiled
+XML table does not evaluate instruction pseudocode, feature availability, or
+every decode-time constraint. Unicorn also answers through execution and traps
+rather than through disassembly. Each difference needs instruction-family and
+configuration analysis before it can support an upstream bug report.
 
 ### Instruction text
 
