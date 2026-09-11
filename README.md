@@ -55,29 +55,47 @@ every decode-time constraint. Unicorn also answers through execution and traps
 rather than through disassembly. Each difference needs instruction-family and
 configuration analysis before it can support an upstream bug report.
 
-### Instruction text
+### Instruction text is diagnostic only
 
-Comparing rendered mnemonics and operands is much more expensive than recording
-a validity bit. Silica therefore evaluates text on a deterministic sample of
-1,000,000 words drawn from 1,266,064,016 candidates where all four oracles
-consider the encoding valid. This is a sampled result and is deliberately kept
-separate from the exhaustive validity figures.
+Silica recorded a deterministic sample of 1,000,000 words from the
+1,266,064,016 words accepted by all four validity checks. The outputs are not
+symmetrical: Capstone and LLVM return complete disassembly text, the XML table
+returns only a mnemonic, and Unicorn returns the placeholder `<valid>`.
 
-| Classification within the sample | Records | Share |
+The current classifier reports:
+
+| Classification | Records | Share |
 |---|---:|---:|
-| Operand rendering differs | 862,648 | 86.3% |
-| Normalization needs review | 137,352 | 13.7% |
+| Same normalized mnemonic, different full text | 862,648 | 86.3% |
+| Different normalized mnemonic | 137,352 | 13.7% |
 
-The sample is useful for locating normalization and presentation work; it does
-not claim exhaustive coverage of every textual rendering.
+The 86.3% value is not an operand-error rate. In most records, a full
+instruction is being compared with a mnemonic-only reference. Alias handling
+also remains conservative when an XML alias condition cannot be proven from
+rendered text. These records are leads for analysis, not findings about decoder
+correctness.
+
+### What the ten examples mean
+
+The files in [`artifacts/reproducers`](artifacts/reproducers) are ten distinct
+records selected from the first five eligible disagreement shards. Selection
+prefers text categories and caps repeated `(category, spec mnemonic)` pairs.
+All ten current files compare Capstone with the XML-derived mnemonic.
+
+They prove that the records exist in the generated corpus and can be reproduced
+from one instruction word. They have not been independently adjudicated as ten
+Capstone bugs, and they are not evidence that LLVM and Unicorn agree on the
+rendered instruction. Three are explicitly marked `NORMALIZATION_UNCERTAIN`.
+The generator and verifier are
+[`g6_reproducers.py`](pysilica/analyze/g6_reproducers.py) and
+[`verify/g6_reproducers.py`](pysilica/verify/g6_reproducers.py).
 
 ## Explore the results
 
-The sweep engine produces a large research dataset. **[silica-scope](https://pypi.org/project/silica-scope/)**
-is the companion terminal app for making that dataset approachable. It opens a
-finished Silica artifact directory and lets you browse headline metrics, inspect
-the 256-shard encoding map, filter disagreements, look up any 32-bit word, and
-read the filing-ready reproducers.
+The sweep produces a large dataset. **[silica-scope](https://pypi.org/project/silica-scope/)**
+is its terminal reader. It opens a Silica artifact directory, shows the metrics
+and 256-shard map, filters disagreement records, and looks up individual words.
+It can also open the ten example records with their stated limitations.
 
 Install it from PyPI with Python 3.11 or newer:
 
@@ -93,10 +111,9 @@ silica-scope /path/to/silica/artifacts
 silica-scope --report
 ```
 
-`silica-scope` is a pure-Python reader with no native decoder dependencies. It
-does not launch the exhaustive sweep, and it handles the repository's smaller
-published artifact set gracefully. See the [terminal reader guide](tui/README.md)
-for the panes, keyboard controls, and artifact discovery options.
+`silica-scope` is a pure-Python reader. It does not run the sweep or require the
+native decoder libraries. See the [terminal reader guide](tui/README.md) for
+keyboard controls and artifact discovery.
 
 ## How it works
 
